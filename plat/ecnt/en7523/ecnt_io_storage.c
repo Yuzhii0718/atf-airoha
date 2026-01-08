@@ -432,6 +432,13 @@ int fill_io_block_spec_gpt(io_block_spec_t *spec, const char *name)
 }
 #endif
 
+#if defined(IMAGE_BL23) && (defined(TCSUPPORT_UBI_SUPPORT) || defined(TCSUPPORT_EMMC))
+void plat_ecnt_io_switch_to_memmap(void)
+{
+	policies[FIP_IMAGE_ID] = &fip_memmap_policy;
+}
+#endif
+
 void plat_ecnt_io_setup(const hw_trap_t *hw_trap)
 {
 	int io_result;
