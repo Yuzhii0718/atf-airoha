@@ -347,12 +347,14 @@ void plat_ecnt_io_setup(const hw_trap_t *hw_trap)
 				&memmap_dev_handle);
 	assert(io_result == 0);
 
+#if !defined(TCSUPPORT_UBI_SUPPORT) && !defined(TCSUPPORT_EMMC)
 	io_result = register_io_dev_enc(&enc_dev_con);
 	assert(io_result == 0);
 
 	io_result = io_dev_open(enc_dev_con, (uintptr_t)NULL,
 				&enc_dev_handle);
 	assert(io_result == 0);
+#endif
 
 	/* Ignore improbable errors in release builds */
 	(void)io_result;
