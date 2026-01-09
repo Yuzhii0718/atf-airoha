@@ -4903,6 +4903,7 @@ SPI_NAND_FLASH_RTN_T SPI_NAND_Flash_Init(u32 rom_base)
 	SPI_NFI_CONF_SPARE_SIZE_T   spare_size_t;
 	SPI_NAND_FLASH_RTN_T	rtn_status = SPI_NAND_FLASH_RTN_PROBE_ERROR;	
 	int						ret = 0;
+	int dma_on;
 
 #ifdef TCSUPPORT_DSL_PHYMODE
 #if defined(TCSUPPORT_2_6_36_KERNEL) || defined(TCSUPPORT_3_18_21_KERNEL)
@@ -5014,9 +5015,36 @@ SPI_NAND_FLASH_RTN_T SPI_NAND_Flash_Init(u32 rom_base)
 		} else {
 			_SPI_NAND_PRINTF("Using Flash ECC.\n");
 			SPI_NAND_Flash_Enable_OnDie_ECC();
-#if defined(TCSUPPORT_SPI_NAND_FLASH_ECC_DMA) && !defined(IMAGE_BL2)
-			/* BL2 is worked at L2C or FW SRAM, SPI controller DMA does not support these two SRAM */
-			if(GET_HIR() >= EN7526C_HIR) {
+#if defined(TCSUPPORT_SPI_NAND_FLASH_ECC_DMA) && (!defined(IMAGE_BL2) || defined(IMAGE_BL23))
+			/*
+			 * Original Airoha comment:
+			 *   BL2 is worked at L2C or FW SRAM, SPI controller DMA does not support these two SRAM
+			 *
+			 * Our notice:
+			 *   BL23 on EN7523/AN7581/AN7583 SoCs uses normal RAM for flash
+			 *   reading, see
+			 *     - code of spi_buf_init(),
+			 *     - usage of dma_read_page, dma_write_page variables
+			 *   and definitions of:
+			 *     - tmp_dma_read_page, tmp_dma_write_page
+			 *     - _current_cache_page, _current_cache_page_data,
+			 *     - _current_cache_page_oob, _current_cache_page_oob_mapping
+			 *
+			 * Thus we can safely enable DMA for these SoCs during BL23 stage.
+			 *
+			 * Unfortunately there is a EN7523 SoC specific hardware bug leading
+			 * to flash data damaging if UART_TX bootstrap pin was short to GND
+			 * on board powering. Detect this issue and disable DMA to prevent
+			 * flash data damaging.
+			 */
+			dma_on = 1;
+#if defined(TCSUPPORT_CPU_EN7523) && !defined(TCSUPPORT_CPU_EN7581) && !defined(TCSUPPORT_CPU_AN7552) && !defined(TCSUPPORT_CPU_AN7583)
+			/* EN7523 SoC only, see above for UART_TX bootstrap pin issue */
+			if (!(get_sfc_strap() & 0x04))
+				dma_on = 0;
+#endif
+
+			if (dma_on && (GET_HIR() >= EN7526C_HIR)) {
 				/* Setup NFI */
 				spi_nfi_conf_t.auto_fdm_t			= SPI_NFI_CON_AUTO_FDM_Disable;
 				spi_nfi_conf_t.hw_ecc_t 			= SPI_NFI_CON_HW_ECC_Disable;
