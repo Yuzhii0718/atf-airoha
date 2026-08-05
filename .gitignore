@@ -53,3 +53,8 @@ node_modules/
 env/
 .venv/
 venv/
+
+# Build Tools
+dl/
+arm-gnu-toolchain-15.3.rel1-x86_64-arm-none-eabi
+mbedtls-3.4.1
