@@ -198,6 +198,8 @@ loop:
 			fmt++;
 			continue;
 		}
+		if (*fmt == '\n')
+			(void)putchar('\r');
 		(void)putchar(*fmt);
 		fmt++;
 		count++;

@@ -25,6 +25,11 @@
 
 #define LIB_NAME		"mbed TLS"
 
+#if defined(CONFIG_ECNT) && defined(IMAGE_BL31)
+extern uintptr_t image_hash_base;
+#endif
+
+
 #if CRYPTO_SUPPORT == CRYPTO_HASH_CALC_ONLY || \
 CRYPTO_SUPPORT == CRYPTO_AUTH_VERIFY_AND_HASH_CALC
 /*
@@ -213,9 +218,22 @@ static int verify_hash(void *data_ptr, unsigned int data_len,
 		return CRYPTO_ERR_HASH;
 	}
 	hash = p;
-
 	/* Calculate the hash of the data */
 	p = (unsigned char *)data_ptr;
+
+#if defined(CONFIG_ECNT) && defined(IMAGE_BL31)
+		if (data_len == 0)
+		{
+			rc = memcmp((void *) image_hash_base, hash, mbedtls_md_get_size(md_info));
+			if (rc != 0)
+			{
+				return CRYPTO_ERR_HASH;
+			}
+	
+			return CRYPTO_SUCCESS;
+		}
+#endif
+
 	rc = mbedtls_md(md_info, p, data_len, data_hash);
 	if (rc != 0) {
 		return CRYPTO_ERR_HASH;

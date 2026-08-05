@@ -418,6 +418,12 @@ static image_t *read_image_from_file(const uuid_t *uuid, const char *filename)
 	if (fread(image->buffer, 1, st.st_size, fp) != st.st_size)
 		log_errx("Failed to read %s", filename);
 	image->toc_e.size = st.st_size;
+#if defined(CONFIG_ECNT)
+	if (strstr(filename, "_enc.bin") != NULL)
+		image->toc_e.flags |= FW_ENCRYPTION;
+	if (strstr(filename, "encrypted") != NULL)
+		image->toc_e.flags |= 0x2;
+#endif
 
 	fclose(fp);
 	return image;
@@ -500,7 +506,9 @@ static int info_cmd(int argc, char *argv[])
 		       (unsigned long long)image->toc_e.offset_address,
 		       (unsigned long long)image->toc_e.size,
 		       desc->cmdline_name);
-
+#if defined(CONFIG_ECNT)
+		printf(" flag==0x%llX,", (unsigned long long)image->toc_e.flags);
+#endif
 		/*
 		 * Omit this informative code portion for:
 		 * Visual Studio missing SHA256.

@@ -18,10 +18,84 @@
 #include <lib/utils.h>
 #include <lib/xlat_tables/xlat_tables_defs.h>
 #include <plat/common/platform.h>
+#if defined(TCSUPPORT_ARM_SECURE_BOOT_FLASH_KEY)
+#include <plat_private.h>
+#include <tools_share/firmware_image_package.h>
 
-#if TRUSTED_BOARD_BOOT
-# ifdef DYN_DISABLE_AUTH
-static int disable_auth;
+#if !defined(IMAGE_BL31)
+#include <flashhal.h>
+#endif
+
+#define FREE_DRAM_ADDRESS			(0x80002000)
+
+#if defined(TCSUPPORT_CPU_AN7552)
+
+#define CRYPTO_INFO_FLASH_OFFSET	(507848)
+#define CRYPTO_INFO_LENGTH			(52)
+
+#elif defined(TCSUPPORT_CPU_AN7583)
+
+#define CRYPTO_INFO_FLASH_OFFSET	(507664)
+#define CRYPTO_INFO_LENGTH			(236)
+
+#elif defined(TCSUPPORT_CPU_EN7581)
+
+#define CRYPTO_INFO_FLASH_OFFSET	(507740)
+#define CRYPTO_INFO_LENGTH			(160)
+
+#else
+
+#define CRYPTO_INFO_FLASH_OFFSET	(507664)
+#define CRYPTO_INFO_LENGTH			(236)
+
+#endif
+
+#define CRYPTO_INFO_BYTE			(8)
+
+#endif
+
+static int disable_auth = 0;
+extern uint32_t uartDisable;
+
+#if defined(TCSUPPORT_ARM_SECURE_BOOT_FLASH_KEY)
+#if defined(IMAGE_BL23) || defined(IMAGE_BL31)
+/******************************************************************************
+ * API to update secure data at BL2 and BL31. BL2 read from flash and save to specified dram address.
+ * BL31 get secure data from specified dram address.
+ *****************************************************************************/
+static void check_Secure_Data (void)
+{
+	uint8_t *buf = (uint8_t *)FREE_DRAM_ADDRESS;
+
+	/* BL31 does not support flash driver. */
+#if defined(IMAGE_BL23)
+	if (flash_read(CRYPTO_INFO_FLASH_OFFSET, CRYPTO_INFO_LENGTH, buf) != FLASH_READ_STATUS_CORRECT)
+	{
+		/* Clear specified DRAM data */
+		memset (buf, 0, sizeof(uint8_t));
+	}
+	else
+#endif
+	{
+		/* Check first data block for secure vaild since vaild bit at first data block. */
+		if (*buf & SECURE_VAILD)
+		{
+			uint8_t i;
+
+			for (i=0 ; i<(CRYPTO_INFO_LENGTH - CRYPTO_INFO_BYTE) ; i++, buf++)
+			{
+				/* Update secure data */
+				fill_secure_data(buf, i, CRYPTO_INFO_BYTE);
+			}
+
+			disable_auth = 0;
+		}
+	}
+
+	return;
+}
+#endif
+#endif
 
 /******************************************************************************
  * API to dynamically disable authentication. Only meant for development
@@ -30,22 +104,47 @@ static int disable_auth;
 void dyn_disable_auth(void)
 {
 	INFO("Disabling authentication of images dynamically\n");
+
 	disable_auth = 1;
+
+#if defined(TCSUPPORT_ARM_SECURE_BOOT_FLASH_KEY)
+#if defined(IMAGE_BL31)
+	/* Read EFUSE error. Try to get secure data from DRAM (BL31) */
+	check_Secure_Data();
+#endif
+#endif
 }
-# endif /* DYN_DISABLE_AUTH */
 
 /******************************************************************************
  * Function to determine whether the authentication is disabled dynamically.
  *****************************************************************************/
 static int dyn_is_auth_disabled(void)
 {
-# ifdef DYN_DISABLE_AUTH
+#ifdef DYN_DISABLE_AUTH
+#if defined(TCSUPPORT_ARM_SECURE_BOOT_FLASH_KEY)
+#if defined(IMAGE_BL23)
+	if (disable_auth)
+	{
+		if (plat_check_secure_boot_flash_key())
+		{
+			/* Read EFUSE error. Try to get secure data from flash (BL2) */
+			check_Secure_Data();
+		}
+		else
+		{
+			uint8_t *buf = (uint8_t *)FREE_DRAM_ADDRESS;
+
+			/* Clear specified DRAM data */
+			memset (buf, 0, sizeof(uint8_t));
+		}
+	}
+#endif
+#endif
 	return disable_auth;
-# else
+#else
 	return 0;
-# endif
+#endif
 }
-#endif /* TRUSTED_BOARD_BOOT */
 
 uintptr_t page_align(uintptr_t value, unsigned dir)
 {
@@ -79,6 +178,17 @@ static int load_image(unsigned int image_id, image_info_t *image_data)
 
 	assert(image_data != NULL);
 	assert(image_data->h.version >= VERSION_2);
+
+#if defined(IMAGE_BL31)
+	if ((image_id == BL2_IMAGE_ID) || (image_id == BL33_IMAGE_ID))
+	{
+		if((image_data->image_base == TZRAM2_BASE) || (dyn_is_auth_disabled() != 0))
+		{
+			image_data->image_size = 0;
+			return 0;
+		}
+	}
+#endif
 
 	image_base = image_data->image_base;
 
@@ -174,6 +284,18 @@ static int load_auth_image_recursive(unsigned int image_id,
 	rc = auth_mod_verify_img(image_id,
 				 (void *)image_data->image_base,
 				 image_data->image_size);
+
+#if defined(IMAGE_BL31)
+	auth_img_flags[image_id] &= ~IMG_FLAG_AUTHENTICATED;
+	if (image_data->image_size == 0)
+	{
+		if (rc != 0)
+			return -EAUTH;
+		else
+			return 0;
+	}
+#endif
+
 	if (rc != 0) {
 		/* Authentication error, zero memory and flush it right away. */
 		zero_normalmem((void *)image_data->image_base,
@@ -192,9 +314,12 @@ static int load_auth_image_internal(unsigned int image_id,
 {
 #if TRUSTED_BOARD_BOOT
 	if (dyn_is_auth_disabled() == 0) {
+		INFO("4-1\n");
+
 		return load_auth_image_recursive(image_id, image_data, 0);
 	}
 #endif
+	INFO("4-2\n");
 
 	return load_image(image_id, image_data);
 }

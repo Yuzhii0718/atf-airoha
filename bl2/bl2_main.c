@@ -23,15 +23,35 @@
 
 #include "bl2_private.h"
 
-#ifdef __aarch64__
 #define NEXT_IMAGE	"BL31"
-#else
-#define NEXT_IMAGE	"BL32"
+
+#define CURRENT_BL2	"BL2"
+
+#ifdef IMAGE_BL21
+#undef CURRENT_BL2
+#define CURRENT_BL2	"BL21"
+#endif
+
+#ifdef IMAGE_BL22
+#undef CURRENT_BL2
+#define CURRENT_BL2	"BL22"
+#endif
+
+#ifdef IMAGE_BL23
+#undef CURRENT_BL2
+#define CURRENT_BL2	"BL23"
 #endif
 
 #if ENABLE_RUNTIME_INSTRUMENTATION
 	PMF_REGISTER_SERVICE(bl_svc, PMF_RT_INSTR_SVC_ID,
 		BL_TOTAL_IDS, PMF_DUMP_ENABLE);
+#endif
+
+/* precompiled .o will use uartDisable to toggle verbose output */
+#if LOG_LEVEL >= LOG_LEVEL_INFO
+uint32_t uartDisable = 0;
+#else
+uint32_t uartDisable = 1;
 #endif
 
 #if RESET_TO_BL2
@@ -92,8 +112,10 @@ void bl2_main(void)
 	PMF_CAPTURE_TIMESTAMP(bl_svc, BL2_ENTRY, PMF_CACHE_MAINT);
 #endif
 
-	NOTICE("BL2: %s\n", version_string);
-	NOTICE("BL2: %s\n", build_message);
+	NOTICE(CURRENT_BL2": %s\n", version_string);
+	NOTICE(CURRENT_BL2": %s\n", build_message);
+
+	NOTICE("Current in %s\n", CURRENT_BL2	);
 
 	/* Perform remaining generic architectural setup in S-EL1 */
 	bl2_arch_setup();
@@ -102,17 +124,18 @@ void bl2_main(void)
 	fwu_init();
 #endif /* PSA_FWU_SUPPORT */
 
+#if !defined(IMAGE_BL21) && !defined(IMAGE_BL22)
 	crypto_mod_init();
 
 	/* Initialize authentication module */
 	auth_mod_init();
-
+#endif
 	/* Initialize the Measured Boot backend */
 	bl2_plat_mboot_init();
 
 	/* Initialize boot source */
 	bl2_plat_preload_setup();
-
+#if !defined(IMAGE_BL21) && !defined(IMAGE_BL22)
 	/* Load the subsequent bootloader images. */
 	next_bl_ep_info = bl2_load_images();
 
@@ -149,8 +172,8 @@ void bl2_main(void)
 	 */
 	smc(BL1_SMC_RUN_IMAGE, (unsigned long)next_bl_ep_info, 0, 0, 0, 0, 0, 0);
 #else /* if BL2_RUNS_AT_EL3 */
+	NOTICE(CURRENT_BL2 ": Booting " NEXT_IMAGE "\n");
 
-	NOTICE("BL2: Booting " NEXT_IMAGE "\n");
 	print_entry_point_info(next_bl_ep_info);
 #if ENABLE_RUNTIME_INSTRUMENTATION
 	PMF_CAPTURE_TIMESTAMP(bl_svc, BL2_EXIT, PMF_CACHE_MAINT);
@@ -166,4 +189,5 @@ void bl2_main(void)
 
 	bl2_run_next_image(next_bl_ep_info);
 #endif /* BL2_RUNS_AT_EL3 */
+#endif
 }
