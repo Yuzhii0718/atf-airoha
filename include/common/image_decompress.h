@@ -20,5 +20,8 @@ void image_decompress_init(uintptr_t buf_base, uint32_t buf_size,
 			   decompressor_t *decompressor);
 void image_decompress_prepare(struct image_info *info);
 int image_decompress(struct image_info *info);
+#ifdef IMAGE_BL21
+void image_decompress_work_buf_init(uintptr_t buf_base, uint32_t buf_size);
+#endif
 
 #endif /* IMAGE_DECOMPRESS_H */

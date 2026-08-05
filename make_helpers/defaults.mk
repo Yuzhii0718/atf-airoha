@@ -30,14 +30,14 @@ ARM_ARCH_MINOR			:= 0
 BASE_COMMIT			:= origin/master
 
 # Execute BL2 at EL3
-RESET_TO_BL2			:= 0
+RESET_TO_BL2			:= 1
 
 # Only use SP packages if SP layout JSON is defined
 BL2_ENABLE_SP_LOAD		:= 0
 
 # BL2 image is stored in XIP memory, for now, this option is only supported
 # when RESET_TO_BL2 is 1.
-BL2_IN_XIP_MEM			:= 0
+BL2_IN_XIP_MEM			:= 1
 
 # Do dcache invalidate upon BL2 entry at EL3
 BL2_INV_DCACHE			:= 1
@@ -67,7 +67,7 @@ CTX_INCLUDE_FPREGS		:= 0
 DEBUG				:= 0
 
 # By default disable authenticated decryption support.
-DECRYPTION_SUPPORT		:= none
+DECRYPTION_SUPPORT		:= aes_gcm
 
 # Build platform
 DEFAULT_PLAT			:= fvp
@@ -77,7 +77,7 @@ DISABLE_BIN_GENERATION		:= 0
 
 # Enable capability to disable authentication dynamically. Only meant for
 # development platforms.
-DYN_DISABLE_AUTH		:= 0
+DYN_DISABLE_AUTH		:= 1
 
 # Enable the Maximum Power Mitigation Mechanism on supporting cores.
 ENABLE_MPMM			:= 0
@@ -109,6 +109,9 @@ ENCRYPT_BL31			:= 0
 # By default BL32 encryption disabled
 ENCRYPT_BL32			:= 0
 
+# By default BL33 encryption disabled
+ENCRYPT_BL33			:= 0
+
 # Default dummy firmware encryption key
 ENC_KEY	:= 1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
 
@@ -137,7 +140,7 @@ FWU_FIP_NAME			:= fwu_fip.bin
 FW_ENC_STATUS			:= 0
 
 # For Chain of Trust
-GENERATE_COT			:= 0
+GENERATE_COT			:= 1
 
 # Hint platform interrupt control layer that Group 0 interrupts are for EL3. By
 # default, they are for Secure EL1.
@@ -195,7 +198,7 @@ PSCI_OS_INIT_MODE		:= 0
 RESET_TO_BL31			:= 0
 
 # For Chain of Trust
-SAVE_KEYS			:= 0
+SAVE_KEYS			:= 1
 
 # Software Delegated Exception support
 SDEI_SUPPORT			:= 0
@@ -248,7 +251,7 @@ SPMD_SPM_AT_SEL2		:= 1
 SPIN_ON_BL1_EXIT		:= 0
 
 # Flags to build TF with Trusted Boot support
-TRUSTED_BOARD_BOOT		:= 0
+TRUSTED_BOARD_BOOT		:= 1
 
 # Build option to choose whether Trusted Firmware uses Coherent memory or not.
 USE_COHERENT_MEM		:= 1
@@ -366,7 +369,7 @@ PSA_CRYPTO			:= 0
 # getc() support from the console(s).
 # Disabled by default because it constitutes an attack vector into TF-A. It
 # should only be enabled if there is a use case for it.
-ENABLE_CONSOLE_GETC		:= 0
+ENABLE_CONSOLE_GETC		:= 1
 
 # Build option to disable EL2 when it is not used.
 # Most platforms switch from EL3 to NS-EL2 and hence the unused NS-EL2

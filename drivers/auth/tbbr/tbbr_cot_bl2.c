@@ -207,6 +207,24 @@ static const auth_img_desc_t scp_bl2_image = {
 		}
 	}
 };
+#ifdef IMAGE_BL31
+static const auth_img_desc_t bl2_image = {
+	.img_id = BL2_IMAGE_ID,
+	.img_type = IMG_RAW,
+	.parent = &trusted_boot_fw_cert,
+	.img_auth_methods = (const auth_method_desc_t[AUTH_METHOD_NUM]) {
+		[0] = {
+			.type = AUTH_METHOD_HASH,
+			.param.hash = {
+				.data = &raw_data,
+				.hash = &tb_fw_hash
+			}
+		}
+	}
+};
+
+#endif
+
 /*
  * SoC Firmware
  */
@@ -654,6 +672,9 @@ DEFINE_SIP_SP_PKG(8);
 
 static const auth_img_desc_t * const cot_desc[] = {
 	[TRUSTED_BOOT_FW_CERT_ID]		=	&trusted_boot_fw_cert,
+#ifdef IMAGE_BL31
+	[BL2_IMAGE_ID]				=	&bl2_image,
+#endif
 	[HW_CONFIG_ID]				=	&hw_config,
 	[TRUSTED_KEY_CERT_ID]			=	&trusted_key_cert,
 	[SCP_FW_KEY_CERT_ID]			=	&scp_fw_key_cert,

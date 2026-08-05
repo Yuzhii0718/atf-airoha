@@ -12,6 +12,65 @@
 #include <plat_macros.S>
 #include <lib/cpus/errata.h>
 
+/* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+ * [START] copied from atf2.1 
+ * !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+ */
+	.globl ca53_disable_flush_caches
+	.globl ca53_enable_icache
+
+/* ---------------------------------------------
+ * Enable L1 I-caches.
+ * ---------------------------------------------
+ */
+func ca53_enable_icache
+	mrs	x1, sctlr_el3
+	orr	x1, x1, #SCTLR_I_BIT
+	msr	sctlr_el3, x1
+	isb
+	ret
+endfunc ca53_enable_icache
+
+/* ---------------------------------------------
+ * Disable L1 I/D caches and unified L2 cache.
+ * ---------------------------------------------
+ */
+func cortex_a53_disable_caches
+	mrs	x1, sctlr_el3
+	bic	x1, x1, #SCTLR_I_BIT
+	bic	x1, x1, #SCTLR_C_BIT
+	msr	sctlr_el3, x1
+	isb
+	ret
+endfunc cortex_a53_disable_caches
+
+func ca53_disable_flush_caches
+	mov	x18, x30
+
+/* ---------------------------------------------
+ * Disable L1 I/D caches and unified L2 cache.
+ * ---------------------------------------------
+ */
+	bl	cortex_a53_disable_caches
+
+/* ---------------------------------------------
+ * Flush L1/L2 d-caches by set/way.
+ * ---------------------------------------------
+ */
+	mov	x0, #DCCISW
+	bl	dcsw_op_level1
+	mov	x0, #DCCISW
+	bl	dcsw_op_level2
+
+	mov	x30, x18
+	ret
+endfunc ca53_disable_flush_caches
+
+/* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+ * [END] copied from atf2.1 
+ * !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+ */
+
 	/* ---------------------------------------------
 	 * Disable L1 data cache and unified L2 cache
 	 * ---------------------------------------------

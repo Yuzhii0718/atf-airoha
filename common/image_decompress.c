@@ -14,6 +14,10 @@
 
 static uintptr_t decompressor_buf_base;
 static uint32_t decompressor_buf_size;
+#ifdef IMAGE_BL21
+static uintptr_t work_buf_base;
+static uint32_t work_buf_size;
+#endif
 static decompressor_t *decompressor;
 static struct image_info saved_image_info;
 
@@ -24,6 +28,14 @@ void image_decompress_init(uintptr_t buf_base, uint32_t buf_size,
 	decompressor_buf_size = buf_size;
 	decompressor = _decompressor;
 }
+
+#ifdef IMAGE_BL21
+void image_decompress_work_buf_init(uintptr_t buf_base, uint32_t buf_size)
+{
+	work_buf_base = buf_base;
+	work_buf_size = buf_size;
+}
+#endif
 
 void image_decompress_prepare(struct image_info *info)
 {
@@ -60,8 +72,13 @@ int image_decompress(struct image_info *info)
 	 * Use the rest of the temporary buffer as workspace of the
 	 * decompressor since the decompressor may need additional memory.
 	 */
+#ifdef IMAGE_BL21
+	work_base = work_buf_base;
+	work_size = work_buf_size;
+#else
 	work_base = compressed_image_base + compressed_image_size;
 	work_size = decompressor_buf_size - compressed_image_size;
+#endif
 
 	ret = decompressor(&compressed_image_base, compressed_image_size,
 			   &image_base, info->image_max_size,

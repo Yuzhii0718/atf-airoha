@@ -100,6 +100,7 @@ const auth_img_desc_t trusted_boot_fw_cert = {
 				.len = (unsigned int)HASH_DER_LEN
 			}
 		},
+#if !defined(CONFIG_ECNT)
 		[3] = {
 			.type_desc = &fw_config_hash,
 			.data = {
@@ -107,6 +108,7 @@ const auth_img_desc_t trusted_boot_fw_cert = {
 				.len = (unsigned int)HASH_DER_LEN
 			}
 		}
+#endif
 	}
 };
 

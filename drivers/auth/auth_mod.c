@@ -435,6 +435,7 @@ int auth_mod_get_parent_id(unsigned int img_id, unsigned int *parent_id)
 /*
  * Initialize the different modules in the authentication framework
  */
+#if TRUSTED_BOARD_BOOT
 void auth_mod_init(void)
 {
 	/* Check we have a valid CoT registered */
@@ -443,6 +444,8 @@ void auth_mod_init(void)
 	/* Image parser module */
 	img_parser_init();
 }
+#else
+#endif
 
 /*
  * Authenticate a certificate/image
