@@ -143,7 +143,7 @@ entry_point_info_t *bl31_plat_get_next_image_ep_info(uint32_t type)
 	next_image_info = (type == NON_SECURE) ? &bl33_ep_info : &bl32_ep_info;
 
 	if (next_image_info->pc){
-		INFO(" next pc = 0x%x \n",next_image_info->pc );
+		INFO(" next pc = 0x%lx \n",next_image_info->pc );
 	}
 
 	/* None of the images on this platform can have 0x0 as the entrypoint */
@@ -243,9 +243,9 @@ void bl31_platform_setup(void)
 	mmio_clrbits_32((SPM_BASE + 0x1C), 1 << 17);
 }
 
-#if 1
-/* bit0:    0 for data or unified,  1 for instruction 
- * bit1~3:  0 for level1,           1 for level2 */ 
+#if LOG_LEVEL >= LOG_LEVEL_INFO
+/* bit0:    0 for data or unified,  1 for instruction
+ * bit1~3:  0 for level1,           1 for level2 */
 #define CSSEL_L1D   (0x0)
 #define CSSEL_L1I   (0x1)
 #define CSSEL_L2U   (0x2)
@@ -283,7 +283,7 @@ unsigned int cssel_config[] = {CSSEL_L1D, CSSEL_L1I, CSSEL_L2U};
 	__val;							\
 })
 
-/* Which cache CCSIDR represents depends on CSSELR value. 
+/* Which cache CCSIDR represents depends on CSSELR value.
  * Note: get_ccsidr is copied from linux-5.4.55/arch/arm64/kvm/sys_regs.c */
 static unsigned int get_ccsidr(unsigned int csselr)
 {
@@ -295,6 +295,7 @@ static unsigned int get_ccsidr(unsigned int csselr)
 
 	return ccsidr;
 }
+#endif /* LOG_LEVEL >= LOG_LEVEL_INFO */
 
 /*
  * type==0: 128K_L2+128K_S,  type==1: 256K_S,  type==2: 256K_L2 .
@@ -365,7 +366,6 @@ l2c_sram_verify_fail:
     return;
 }
 #endif
-#endif
 
 /*******************************************************************************
  * Perform the very early platform specific architectural setup here. At the
@@ -374,7 +374,6 @@ l2c_sram_verify_fail:
 void bl31_plat_arch_setup(void)
 {
 	uint64_t dram_size = 0;
-    unsigned int numSet, associativity, LineSize, ccsidr, cacheSize;
 	
 #ifdef L2C_SRAM_CONFIG
     #ifdef L2C_SRAM_VERIFY
@@ -416,6 +415,7 @@ void bl31_plat_arch_setup(void)
                    BL_COHERENT_RAM_END);
 #if LOG_LEVEL >= LOG_LEVEL_INFO
     int i;
+    unsigned int numSet, associativity, LineSize, ccsidr, cacheSize;
 
     for (i=0; i<3; i++) {
         ccsidr = get_ccsidr(cssel_config[i]);
@@ -468,7 +468,7 @@ entry_point_info_t *bl31_plat_get_next_kernel64_ep_info(void)
 	next_image_info->args.arg0=get_kernel_info_r0();
 //	next_image_info->args.arg1=get_kernel_info_r1();
 
-	INFO("pc=0x%lx, r0=0x%llx, r1=0x%llx\n",
+	INFO("pc=0x%lx, r0=0x%lx, r1=0x%lx\n",
 		   next_image_info->pc,
 		   next_image_info->args.arg0,
 		   next_image_info->args.arg1);
@@ -509,7 +509,7 @@ entry_point_info_t *bl31_plat_get_next_kernel32_ep_info(void)
 	next_image_info->args.arg1=get_kernel_info_r1();
 	next_image_info->args.arg2=get_kernel_info_r2();
 
-	INFO("pc=0x%lx, r0=0x%llx, r1=0x%llx, r2=0x%llx\n",
+	INFO("pc=0x%lx, r0=0x%lx, r1=0x%lx, r2=0x%lx\n",
 		   next_image_info->pc,
 		   next_image_info->args.arg0,
 		   next_image_info->args.arg1,

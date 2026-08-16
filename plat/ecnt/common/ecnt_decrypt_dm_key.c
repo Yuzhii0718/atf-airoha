@@ -42,8 +42,14 @@ int decrypt_dm_key(uint8_t *p_buf, unsigned int size){
 		goto exit_aes;
 	}
 
-	for(i = 0; i < size; i += 16)
-		mbedtls_aes_crypt_ecb(&ctx, MBEDTLS_AES_DECRYPT, (enc_key + i), (decrypt_key_buf + i));
+	for(i = 0; i < size; i += 16) {
+		rc = mbedtls_aes_crypt_ecb(&ctx, MBEDTLS_AES_DECRYPT, (enc_key + i), (decrypt_key_buf + i));
+		if (rc != 0) {
+			printf("AES ECB Failed\n");
+			rc = -1;
+			goto exit_aes;
+		}
+	}
 
 	/* AES decryption success */
 	rc = CRYPTO_SUCCESS;
@@ -156,7 +162,7 @@ int decrypt_gcm_data(uint8_t *buffer, unsigned int size){
 	size_t airoha_key_len = AIROHA_KEY_SIZE;
 	unsigned int key_flags = 0;
 
-	NOTICE("debug: buffer=0x%x, payload=%p, sizeof fw_hdr=0x%x.\n", buffer, payload, sizeof(struct fw_enc_hdr));	
+	NOTICE("debug: buffer=%p, payload=%p, sizeof fw_hdr=0x%zx.\n", (void *)buffer, payload, sizeof(struct fw_enc_hdr));
 	int len;
 
 	p_header = (struct fw_enc_hdr*) buffer;
@@ -199,7 +205,7 @@ int decrypt_gcm_data(uint8_t *buffer, unsigned int size){
 
 	len = size - sizeof(struct fw_enc_hdr);
 	
-	printf("gcm len=%d (%d - %d)\n",len, size, sizeof(struct fw_enc_hdr));
+	printf("gcm len=%d (%d - %zd)\n",len, size, sizeof(struct fw_enc_hdr));
 	
 	result = aes_gcm_decrypt(payload, len, airoha_key, airoha_key_len, p_header->iv, p_header->iv_len,
 				     p_header->tag, p_header->tag_len);
