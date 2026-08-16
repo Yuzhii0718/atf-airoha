@@ -24,7 +24,7 @@
  * established, we can reuse some of the buffers on different stages
  */
 
-static unsigned char fw_config_hash_buf[HASH_DER_LEN];
+[[maybe_unused]] static unsigned char fw_config_hash_buf[HASH_DER_LEN];
 static unsigned char tb_fw_config_hash_buf[HASH_DER_LEN];
 static unsigned char hw_config_hash_buf[HASH_DER_LEN];
 unsigned char tb_fw_hash_buf[HASH_DER_LEN];

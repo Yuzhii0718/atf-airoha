@@ -339,11 +339,13 @@ static uint32_t msdc_cmd_prepare_raw_cmd(struct msdc_host *host,
 	switch (opcode) {
 	case MMC_CMD_WRITE_MULTIPLE_BLOCK:
 		rawcmd |= SDC_CMD_WR;
+		/* fallthrough */
 	case MMC_CMD_READ_MULTIPLE_BLOCK:
 		dtype = 2;
 		break;
 	case MMC_CMD_WRITE_SINGLE_BLOCK:
 		rawcmd |= SDC_CMD_WR;
+		/* fallthrough */
 	case MMC_CMD_READ_SINGLE_BLOCK:
 	case SD_CMD_APP_SEND_SCR:
 		dtype = 1;

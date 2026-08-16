@@ -374,11 +374,11 @@ void rbus2dram_out_of_order_enable(int enable)
     val = mmio_read_32(DRAM_CONF_REG);
     if (enable) {
         printf("bus2dram out_of_order mode\r\n");
-        val |= (0x1<<31);
+        val |= (0x1U<<31);
     }
     else {
         printf("bus2dram in_order mode\r\n");
-        val &= (~(0x1<<31));
+        val &= (~(0x1U<<31));
     }
     mmio_write_32(DRAM_CONF_REG, val);
 

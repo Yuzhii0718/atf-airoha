@@ -220,7 +220,6 @@ extern void SET_SPI_CLK(u32 val);
 extern u32 GET_SPI_QUAD_SHARED_PIN_RG(void);
 extern void SET_SPI_QUAD_SHARED_PIN_RG(u32 val);
 #endif
-extern u32 GET_NP_SCU_EMMC(void);
 /* LOCAL SUBPROGRAM BODIES------------------------------------------------------------ */
 #if defined(SPI_CONTROLLER_DEBUG)
 #ifdef SPRAM_IMG

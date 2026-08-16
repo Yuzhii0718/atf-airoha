@@ -327,7 +327,7 @@ void plat_ecnt_io_setup(const hw_trap_t *hw_trap)
 	    (!hw_trap->fw_upgrade_mode || hw_trap->skip_fw_upgrade || plat_get_hw_bypass())) {
 		policies[FIP_IMAGE_ID] = &fip_ubi_policy;
 		io_result = mtk_fip_image_setup(&ubi_dev_handle,
-						&policies[FIP_IMAGE_ID]->image_spec);
+				(uintptr_t *)&policies[FIP_IMAGE_ID]->image_spec);
 		assert(io_result == 0);
 	}
 #endif
