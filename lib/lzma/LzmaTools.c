@@ -59,6 +59,12 @@ int lzmaBuffToBuffDecompress(uintptr_t *inStream, size_t length, uintptr_t *outS
 	zalloc_start = work_buf;
 	zalloc_end = work_buf + work_len;
 	zalloc_current = zalloc_start;
+	NOTICE("LZMA DBG: in=0x%lx len=0x%zx out=0x%lx maxsz=0x%zx work=0x%lx worklen=0x%zx\n", *inStream, length, *outStream, uncompressedSize, work_buf, work_len);
+	NOTICE("LZMA DBG: src head=%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
+		((unsigned char *)*inStream)[0], ((unsigned char *)*inStream)[1], ((unsigned char *)*inStream)[2], ((unsigned char *)*inStream)[3],
+		((unsigned char *)*inStream)[4], ((unsigned char *)*inStream)[5], ((unsigned char *)*inStream)[6], ((unsigned char *)*inStream)[7],
+		((unsigned char *)*inStream)[8], ((unsigned char *)*inStream)[9], ((unsigned char *)*inStream)[10], ((unsigned char *)*inStream)[11],
+		((unsigned char *)*inStream)[12]);
 	INFO("LZMA: Image address............... 0x%lx\n", *inStream);
 	INFO("LZMA: Properties address.......... 0x%lx\n", *inStream + LZMA_PROPERTIES_OFFSET);
 	INFO("LZMA: Uncompressed size address... 0x%lx\n", *inStream + LZMA_SIZE_OFFSET);
@@ -80,6 +86,7 @@ int lzmaBuffToBuffDecompress(uintptr_t *inStream, size_t length, uintptr_t *outS
 	}
 
 	if ((outSizeHigh != 0) || (outSize > outProcessed)) {
+		NOTICE("LZMA DBG: CHECK FAIL outSize=0x%zx outSizeHigh=0x%zx outProcessed=0x%zx\n", outSize, outSizeHigh, outProcessed);
 		return SZ_ERROR_DATA;
 	}
 
@@ -97,6 +104,7 @@ int lzmaBuffToBuffDecompress(uintptr_t *inStream, size_t length, uintptr_t *outS
 	if (res != SZ_OK) {
 		ERROR("LZMA: res %d state %d\n", res, state);
 	}
+	NOTICE("LZMA DBG: res=%d state=%d outProcessed=0x%zx compressedUsed=0x%zx\n", res, state, outProcessed, compressedSize);
 
 	*outStream = round_up(*outStream + outProcessed, sizeof(uintptr_t ));
 
