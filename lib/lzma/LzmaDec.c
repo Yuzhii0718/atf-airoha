@@ -5,6 +5,7 @@
 #include <LzmaDec.h>
 
 #include <string.h>
+#include <common/debug.h>
 
 #define kNumTopBits 24
 #define kTopValue ((UInt32)1 << kNumTopBits)
@@ -211,7 +212,10 @@ static int MY_FAST_CALL LzmaDec_DecodeReal(CLzmaDec *p, SizeT limit, const Byte 
       {
         UPDATE_1(prob);
         if (checkDicSize == 0 && processedPos == 0)
+        {
+          ERROR("LZMA_DBG: L214 literal err at start\n");
           return SZ_ERROR_DATA;
+        }
         prob = probs + IsRepG0 + state;
         IF_BIT_0(prob)
         {
@@ -371,17 +375,28 @@ static int MY_FAST_CALL LzmaDec_DecodeReal(CLzmaDec *p, SizeT limit, const Byte 
         if (checkDicSize == 0)
         {
           if (distance >= processedPos)
+          {
+            ERROR("LZMA_DBG: L374 dist=0x%x processedPos=0x%x dicSize=0x%x len=0x%x state=0x%x\n",
+                  distance, processedPos, p->prop.dicSize, len, state);
             return SZ_ERROR_DATA;
+          }
         }
         else if (distance >= checkDicSize)
+        {
+          ERROR("LZMA_DBG: L377 dist=0x%x checkDicSize=0x%x\n", distance, checkDicSize);
           return SZ_ERROR_DATA;
+        }
         state = (state < kNumStates + kNumLitStates) ? kNumLitStates : kNumLitStates + 3;
       }
 
       len += kMatchMinLen;
 
       if (limit == dicPos)
+      {
+        ERROR("LZMA_DBG: L391 limit==dicPos outbuf full, len=0x%x dicPos=0x%x limit=0x%x\n",
+              len, dicPos, limit);
         return SZ_ERROR_DATA;
+      }
       {
         SizeT rem = limit - dicPos;
         unsigned curLen = ((rem < len) ? (unsigned)rem : len);
