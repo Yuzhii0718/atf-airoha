@@ -216,7 +216,7 @@
 #else
 #define EN7523_IMAGE_BUF_OFFSET		(PLAT_ECNT_FIP_BASE + UL(0x80000))
 #endif
-#define EN7523_IMAGE_BUF_SIZE		UL(0x58000)
+#define EN7523_IMAGE_BUF_SIZE		UL(0x100000)
 #endif
 #endif
 
