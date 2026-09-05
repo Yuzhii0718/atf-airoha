@@ -7,6 +7,14 @@
 #include <string.h>
 #include <common/debug.h>
 
+/* Verbose LZMA decode debug prints, controlled by the LZMA_DBG build flag
+ * (e.g. LZMA_DBG=1 make / LZMA_DBG=1 ./build.sh). Disabled by default. */
+#ifdef LZMA_DBG
+#define LZMA_DBG_ERROR(...) ERROR(__VA_ARGS__)
+#else
+#define LZMA_DBG_ERROR(...) ((void)0)
+#endif
+
 #define kNumTopBits 24
 #define kTopValue ((UInt32)1 << kNumTopBits)
 
@@ -213,7 +221,7 @@ static int MY_FAST_CALL LzmaDec_DecodeReal(CLzmaDec *p, SizeT limit, const Byte 
         UPDATE_1(prob);
         if (checkDicSize == 0 && processedPos == 0)
         {
-          ERROR("LZMA_DBG: L214 literal err at start\n");
+          LZMA_DBG_ERROR("LZMA_DBG: L214 literal err at start\n");
           return SZ_ERROR_DATA;
         }
         prob = probs + IsRepG0 + state;
@@ -376,14 +384,14 @@ static int MY_FAST_CALL LzmaDec_DecodeReal(CLzmaDec *p, SizeT limit, const Byte 
         {
           if (distance >= processedPos)
           {
-            ERROR("LZMA_DBG: L374 dist=0x%x processedPos=0x%x dicSize=0x%x len=0x%x state=0x%x\n",
+            LZMA_DBG_ERROR("LZMA_DBG: L374 dist=0x%x processedPos=0x%x dicSize=0x%x len=0x%x state=0x%x\n",
                   distance, processedPos, p->prop.dicSize, len, state);
             return SZ_ERROR_DATA;
           }
         }
         else if (distance >= checkDicSize)
         {
-          ERROR("LZMA_DBG: L377 dist=0x%x checkDicSize=0x%x\n", distance, checkDicSize);
+          LZMA_DBG_ERROR("LZMA_DBG: L377 dist=0x%x checkDicSize=0x%x\n", distance, checkDicSize);
           return SZ_ERROR_DATA;
         }
         state = (state < kNumStates + kNumLitStates) ? kNumLitStates : kNumLitStates + 3;
@@ -393,7 +401,7 @@ static int MY_FAST_CALL LzmaDec_DecodeReal(CLzmaDec *p, SizeT limit, const Byte 
 
       if (limit == dicPos)
       {
-        ERROR("LZMA_DBG: L391 limit==dicPos outbuf full, len=0x%x dicPos=0x%x limit=0x%x\n",
+        LZMA_DBG_ERROR("LZMA_DBG: L391 limit==dicPos outbuf full, len=0x%x dicPos=0x%x limit=0x%x\n",
               len, dicPos, limit);
         return SZ_ERROR_DATA;
       }
