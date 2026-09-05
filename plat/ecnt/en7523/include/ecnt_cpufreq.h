@@ -19,6 +19,18 @@ enum e_cpu_freq {
     cpu_freq_1100M,
     cpu_freq_1150M,
     cpu_freq_1200M,
+    /* Overclocking steps (outside the vendor guaranteed range).
+     * Reachable from the ATF SiP frequency-scaling call only; the boot
+     * frequency is still the package default set by ecnt_cpu_speedup().
+     */
+    cpu_freq_1250M,
+    cpu_freq_1300M,
+    cpu_freq_1350M,
+    cpu_freq_1400M,
+    cpu_freq_1450M,
+    cpu_freq_1500M,
+    cpu_freq_1550M,
+    cpu_freq_1600M,
 #endif
     cpu_freq_last
 };

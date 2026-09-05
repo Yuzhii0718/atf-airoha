@@ -74,9 +74,19 @@
 #define VAL_1               (1)
 
 #if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583)
-static unsigned char cpu_freq_config_pcw[]=     { 0x14, 0x16, 0x18, 0x1A, 0x1C, 0x1E, 0x20, 0x22, 0x24, 0x26, 0x14, 0x15, 0x16, 0x17, 0x18};
-static unsigned char cpu_freq_config_posdiv[]=  {VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_0,VAL_0,VAL_0,VAL_0,VAL_0};
-static char *clk_src_name[]={"xtal(50MHz)","armpll(500~1200MHz)","pll1(540MHz)","pll2(400MHz)"};
+/* PCW/POSDIV are derived from the target frequency:
+ *   <  1000MHz : posdiv = 1 -> freq = pcw * 25
+ *   >= 1000MHz : posdiv = 0 -> freq = pcw * 50
+ * The 1250~1600MHz entries are the overclocking steps (pcw = freq / 50) and
+ * match what the OpenWrt overclock helper programs into the PLL directly.
+ */
+static unsigned char cpu_freq_config_pcw[]=     { 0x14, 0x16, 0x18, 0x1A, 0x1C, 0x1E, 0x20, 0x22, 0x24, 0x26,
+                                                  0x14, 0x15, 0x16, 0x17, 0x18,
+                                                  0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20};
+static unsigned char cpu_freq_config_posdiv[]=  {VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,
+                                                 VAL_0,VAL_0,VAL_0,VAL_0,VAL_0,
+                                                 VAL_0,VAL_0,VAL_0,VAL_0,VAL_0,VAL_0,VAL_0,VAL_0};
+static char *clk_src_name[]={"xtal(50MHz)","armpll(500~1600MHz)","pll1(540MHz)","pll2(400MHz)"};
 #elif defined(TCSUPPORT_CPU_AN7552)
 static unsigned char cpu_freq_config_pcw[]=     { 0x14, 0x16, 0x18, 0x1A, 0x1C, 0x1E, 0x20, 0x22, 0x24, 0x26, 0x14};
 static unsigned char cpu_freq_config_posdiv[]=  {VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_0};
@@ -87,7 +97,17 @@ static unsigned char cpu_freq_config_xtal20M[]= {0x32, 0x37, 0x3C, 0x41, 0x46, 0
 static char *clk_src_name[]={"xtal(20/25MHz)","armpll(500~950MHz)","pll1(540MHz)","pll2(500MHz)"};
 #endif
 //static unsigned int  voltage_config[]         ={ 115,  115,  115,  115,  115,  115,  125,  125,  125,  125};	//YMC mark for new AVS FW
-static unsigned int  armpll_clk_MHz[]         = {  500,  550,  600,  650,  700,  750,  800,  850,  900,  950, 1000, 1050, 1100, 1150, 1200};
+static unsigned int  armpll_clk_MHz[]         = {  500,  550,  600,  650,  700,  750,  800,  850,  900,  950,
+                                                 1000, 1050, 1100, 1150, 1200,
+                                                 1250, 1300, 1350, 1400, 1450, 1500, 1550, 1600};
+
+/*
+ * Vendor guaranteed maximum CPU frequency. Anything above this is
+ * overclocking: stability depends on the silicon and the cooling, and the AVS
+ * voltage is NOT scaled together with the frequency (AVS_Set() is disabled
+ * under the "YMC mark for new AVS FW" block in en7523_armpll_set()).
+ */
+#define CPU_FREQ_SPEC_MAX_MHZ	(1200U)
 
 static unsigned int clk_divider_config[]={0x0, 0xa, 0xb, 0x1d};
 
@@ -562,6 +582,11 @@ int en7523_armpll_set(enum e_cpu_freq cpuFreq)
 	/* reject an out-of-range OPP index before touching any PLL register */
 	if (!is_valid_cpu_freq(cpuFreq))
 		return -1;
+
+	if (armpll_clk_MHz[cpuFreq] > CPU_FREQ_SPEC_MAX_MHZ)
+		printf("WARNING: overclocking ARMPLL to %uMHz (spec max %uMHz), "
+		       "AVS voltage is not scaled\n",
+		       armpll_clk_MHz[cpuFreq], CPU_FREQ_SPEC_MAX_MHZ);
 
 	/* switch to PLL2_CLK */
 	if (clk_src_switch(clk_src_pll2)) {
