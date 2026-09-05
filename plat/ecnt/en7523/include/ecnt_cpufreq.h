@@ -64,5 +64,6 @@ unsigned int curr_armpll_clk_get (void);
 int an7552_bootup_clk_src_switch(enum e_cpu_freq cpuFreq);
 
 enum e_cpu_freq cpu_freq_enum_get(unsigned int armpll_clk);
+void ecnt_cpu_freq_info_dump(void);
 
 #endif /* _ECNT_CPUFREQ_H */

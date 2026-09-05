@@ -5,9 +5,7 @@
 #include <lib/mmio.h>
 #include <en7523_def.h>
 #include <drivers/delay_timer.h>
-#if defined(TCSUPPORT_CPU_EN7523)
 #include "ecnt_cpufreq.h"
-#endif
 
 #define FPGA_SYS_HCLK 40
 #if defined(TCSUPPORT_CPU_AN7583)
@@ -461,6 +459,8 @@ int ecnt_system_init(unsigned long long *p_dram_size)
 		}
 
 		ecnt_cpu_speedup();
+		/* report the effective CPU frequency configuration */
+		ecnt_cpu_freq_info_dump();
 		/* when boot from flash, ejtag will default on, and LAN LED is wrong. */
 		set_boot_from_spi_ejtag_enable(0);
 	}

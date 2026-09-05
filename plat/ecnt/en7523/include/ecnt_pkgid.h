@@ -231,4 +231,90 @@ typedef enum {
 	END_PACKAGE_ID = 0xFFFFFFFF,
 } chipId_t ;
 
+/*
+ * Package name lookup tables, indexed by the package ID returned by
+ * GET_PACKAGE_ID() -- an offset from the base of the chip family selected by
+ * GET_HIR(). This is exactly how the isXXXX macros above identify a package,
+ * e.g. isAN7581DT == (isEN7581 && (GET_PACKAGE_ID() == (AN7581DT - AN7581_BASE))).
+ * A NULL entry means the ID is reserved / undefined for that family.
+ *
+ * Declared "static const" so any translation unit may use them; unused copies
+ * are dropped by the linker (-fdata-sections + --gc-sections).
+ */
+static const char *const en7523_pkg_names[] = {
+	[EN7529DU - EN7523_BASE] = "EN7529DU",
+	[EN7529DT - EN7523_BASE] = "EN7529DT",
+	[EN7529CU - EN7523_BASE] = "EN7529CU",
+	[EN7562DU - EN7523_BASE] = "EN7562DU",
+	[EN7562DT - EN7523_BASE] = "EN7562DT",
+	[EN7562CU - EN7523_BASE] = "EN7562CU",
+	[EN7523GU - EN7523_BASE] = "EN7523GU",
+	[EN7523DU - EN7523_BASE] = "EN7523DU",
+	[EN7529GTH - EN7523_BASE] = "EN7529GTH",
+	[EN7562GTH - EN7523_BASE] = "EN7562GTH",
+	[EN7523SU - EN7523_BASE] = "EN7523SU",
+	[EN7529GTS - EN7523_BASE] = "EN7529GTS",
+	[EN7562GTS - EN7523_BASE] = "EN7562GTS",
+	[EN7529IT - EN7523_BASE] = "EN7529IT",
+	[EN7529CT - EN7523_BASE] = "EN7529CT",
+	[EN7562CT - EN7523_BASE] = "EN7562CT",
+	[EN7523DT - EN7523_BASE] = "EN7523DT",
+	[EN7529DTM - EN7523_BASE] = "EN7529DTM",
+	[EN7562DTM - EN7523_BASE] = "EN7562DTM",
+	[EN7529ITM - EN7523_BASE] = "EN7529ITM",
+	[EN7529CTM - EN7523_BASE] = "EN7529CTM",
+	[EN7562CTM - EN7523_BASE] = "EN7562CTM",
+	[EN7523DTM - EN7523_BASE] = "EN7523DTM",
+};
+
+static const char *const an7581_pkg_names[] = {
+	[AN7581GT - AN7581_BASE] = "AN7581GT",
+	[AN7566GT - AN7581_BASE] = "AN7566GT",
+	[AN7581PT - AN7581_BASE] = "AN7581PT",
+	[AN7581ST - AN7581_BASE] = "AN7581ST",
+	[AN7551PT - AN7581_BASE] = "AN7551PT",
+	[AN7581CT - AN7581_BASE] = "AN7581CT",
+	[AN7581DT - AN7581_BASE] = "AN7581DT",
+	[AN7581FG - AN7581_BASE] = "AN7581FG",
+	[AN7581FP - AN7581_BASE] = "AN7581FP",
+	[AN7581FD - AN7581_BASE] = "AN7581FD",
+	[AN7551GT - AN7581_BASE] = "AN7551GT",
+	[AN7566PT - AN7581_BASE] = "AN7566PT",
+	[AN7581IT - AN7581_BASE] = "AN7581IT",
+	[AN7581SIT - AN7581_BASE] = "AN7581SIT",
+};
+
+static const char *const an7552_pkg_names[] = {
+	[AN7552CT - AN7552_BASE] = "AN7552CT",
+	[AN7552ST - AN7552_BASE] = "AN7552ST",
+	[AN7552FT - AN7552_BASE] = "AN7552FT",
+	[AN7563CT - AN7552_BASE] = "AN7563CT",
+	[AN7563PT - AN7552_BASE] = "AN7563PT",
+};
+
+static const char *const an7583_pkg_names[] = {
+	[AN7583GT - AN7583_BASE] = "AN7583GT",
+	[AN7583GIT - AN7583_BASE] = "AN7583GIT",
+	[AN7583CT - AN7583_BASE] = "AN7583CT",
+	[AN7583DT - AN7583_BASE] = "AN7583DT",
+	/* 4: reserved */
+	[AN7583ST - AN7583_BASE] = "AN7583ST",
+	[AN9510GT - AN7583_BASE] = "AN9510GT",
+	/* 7: reserved */
+	[AN7553GT - AN7583_BASE] = "AN7553GT",
+	[AN7553CT - AN7583_BASE] = "AN7553CT",
+	[AN7567GT - AN7583_BASE] = "AN7567GT",
+	[AN7567CT - AN7583_BASE] = "AN7567CT",
+	[AN7583ET - AN7583_BASE] = "AN7583ET",
+	[AN7583EIT - AN7583_BASE] = "AN7583EIT",
+	/* 14, 15: reserved */
+	[AN7583FG - AN7583_BASE] = "AN7583FG",
+	/* 17: reserved */
+	[AN7583FP - AN7583_BASE] = "AN7583FP",
+	[AN7583FD - AN7583_BASE] = "AN7583FD",
+	/* 20: reserved */
+	[AN7583FS - AN7583_BASE] = "AN7583FS",
+	[AN7583FF - AN7583_BASE] = "AN7583FF",
+};
+
 #endif /* _ECNT_PKGID_H_ */

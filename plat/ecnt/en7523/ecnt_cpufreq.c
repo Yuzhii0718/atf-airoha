@@ -3,12 +3,15 @@
 #include <stdio.h>
 #include <lib/mmio.h>
 #include <drivers/delay_timer.h>
+#include <common/debug.h>
+extern unsigned int GET_SYS_CLK(void);	/* plat/ecnt/en7523/ecnt_scu.c */
 #else /* UBoot */
 #include <asm/io.h>
 #include <common.h>
 #endif
 #include <ecnt_avs.h>
 #include <asm/tc3162.h>
+#include <ecnt_pkgid.h>
 #include "ecnt_cpufreq.h"
 
 /* cpu frequency adjustment registers */
@@ -631,4 +634,122 @@ int en7523_armpll_set(enum e_cpu_freq cpuFreq)
         return -1;
 
     return 0;
+}
+
+#if defined(IMAGE_BL2) || defined(IMAGE_BL31)
+#define FREQ_LOG(fmt, ...)	NOTICE(fmt, ##__VA_ARGS__)
+#else /* UBoot */
+#define FREQ_LOG(fmt, ...)	printf(fmt, ##__VA_ARGS__)
+#endif
+
+static const char *ecnt_chip_name(void)
+{
+	if (isEN7523)
+		return "EN7523";
+	if (isEN7581)
+		return "EN7581";
+	if (isAN7552)
+		return "AN7552";
+	if (isAN7583)
+		return "AN7583";
+
+	return "Unknown";
+}
+
+/*
+ * Return the concrete package name of the running SoC (e.g. "AN7581DT"),
+ * or NULL when the chip family or the package ID is not known.
+ * The name tables live in ecnt_pkgid.h, indexed by GET_PACKAGE_ID().
+ */
+static const char *ecnt_package_name(void)
+{
+	const char *const *names;
+	unsigned int count;
+	unsigned int id = GET_PACKAGE_ID();
+
+	if (isEN7523) {
+		names = en7523_pkg_names;
+		count = sizeof(en7523_pkg_names) / sizeof(en7523_pkg_names[0]);
+	} else if (isEN7581) {
+		names = an7581_pkg_names;
+		count = sizeof(an7581_pkg_names) / sizeof(an7581_pkg_names[0]);
+	} else if (isAN7552) {
+		names = an7552_pkg_names;
+		count = sizeof(an7552_pkg_names) / sizeof(an7552_pkg_names[0]);
+	} else if (isAN7583) {
+		names = an7583_pkg_names;
+		count = sizeof(an7583_pkg_names) / sizeof(an7583_pkg_names[0]);
+	} else {
+		return NULL;
+	}
+
+	if (id >= count || names[id] == NULL)
+		return NULL;
+
+	return names[id];
+}
+
+/*
+ * Reference crystal / base clock of the running SoC:
+ *  - EN7581 / AN7583 / AN7552: fixed 50MHz CPUPLL reference
+ *    (freq = pcw * 50 with posdiv 0, or pcw * 25 with posdiv 1)
+ *  - EN7523: 20 or 25MHz XTAL feeding the SYSPLL
+ */
+static unsigned int ecnt_xtal_clk_mhz(void)
+{
+#if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583) || defined(TCSUPPORT_CPU_AN7552)
+	return 50;
+#else
+	return isXtalClk25M() ? 25 : 20;
+#endif
+}
+
+/*
+ * Report the CPU frequency configuration of the running SoC at boot.
+ * The ARM PLL frequency is read back from the PLL registers (through
+ * curr_armpll_clk_get()), so what is printed is the effective frequency,
+ * not the one that was requested.
+ */
+void ecnt_cpu_freq_info_dump(void)
+{
+	unsigned int freq, clk_src, divider, steps;
+	const char *pkg_name;
+#if defined(IMAGE_BL2) || defined(IMAGE_BL31)
+	unsigned int sys_clk = 0;
+#endif
+
+	freq = curr_armpll_clk_get();
+	clk_src = (unsigned int)curr_clk_src_enum_get();
+	divider = curr_clk_divider_get();
+	steps = cpu_freq_table_len();
+	pkg_name = ecnt_package_name();
+#if defined(IMAGE_BL2) || defined(IMAGE_BL31)
+	sys_clk = GET_SYS_CLK();
+#endif
+
+	FREQ_LOG("SoC: %s package %s (HIR 0x%x, pkg id %u)\n",
+		 ecnt_chip_name(), pkg_name ? pkg_name : "unknown",
+		 GET_HIR(), GET_PACKAGE_ID());
+	FREQ_LOG("CPUFreq: XTAL %u MHz, ARM PLL %u MHz\n",
+		 ecnt_xtal_clk_mhz(), freq);
+#if defined(IMAGE_BL2) || defined(IMAGE_BL31)
+	if (sys_clk)
+		FREQ_LOG("CPUFreq: sys clk %u MHz\n", sys_clk);
+#endif
+
+	if (divider)
+		FREQ_LOG("CPUFreq: clock source: %s, divider: 1/%u\n",
+			 clk_src_name[clk_src], divider);
+	else
+		FREQ_LOG("CPUFreq: clock source: %s, divider: unknown\n",
+			 clk_src_name[clk_src]);
+
+	FREQ_LOG("CPUFreq: OPP table: %u - %u MHz, %u steps\n",
+		 armpll_clk_MHz[0], armpll_clk_MHz[steps - 1], steps);
+
+	if (freq == 0)
+		FREQ_LOG("CPUFreq: WARNING: failed to read back the ARM PLL frequency\n");
+	else if (freq > CPU_FREQ_SPEC_MAX_MHZ)
+		FREQ_LOG("CPUFreq: WARNING: running above the %u MHz spec maximum\n",
+			 CPU_FREQ_SPEC_MAX_MHZ);
 }
