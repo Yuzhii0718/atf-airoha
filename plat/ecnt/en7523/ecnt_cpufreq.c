@@ -91,6 +91,34 @@ static unsigned int  armpll_clk_MHz[]         = {  500,  550,  600,  650,  700, 
 
 static unsigned int clk_divider_config[]={0x0, 0xa, 0xb, 0x1d};
 
+/*
+ * Number of OPP entries that can really be programmed into the ARM PLL.
+ *
+ * Note: e_cpu_freq also defines cpu_freq_1000M on EN7523, but the EN7523
+ * SYSPLL PCW tables only cover up to 950MHz. Always derive the limit from
+ * the real table size, so an out-of-range index coming from the non-secure
+ * world (AVS_OP_FREQ_DYN_ADJ) can never index past the tables.
+ */
+static unsigned int cpu_freq_table_len(void)
+{
+#if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583) || defined(TCSUPPORT_CPU_AN7552)
+	return sizeof(cpu_freq_config_pcw) / sizeof(cpu_freq_config_pcw[0]);
+#else
+	return sizeof(cpu_freq_config_xtal25M) / sizeof(cpu_freq_config_xtal25M[0]);
+#endif
+}
+
+static int is_valid_cpu_freq(enum e_cpu_freq cpuFreq)
+{
+	if ((unsigned int)cpuFreq >= cpu_freq_table_len()) {
+		printf("ERROR: invalid cpuFreq:%d (valid range: 0~%u)\n",
+		       (int)cpuFreq, cpu_freq_table_len() - 1);
+		return 0;
+	}
+
+	return 1;
+}
+
 
 void set_cpu_domain_clk_gating(enum cpu_domain_clk_gating pll, int isEnable)
 {
@@ -305,7 +333,7 @@ unsigned int curr_armpll_clk_get (void)
         isXtal25M=1;
         val = readReg(CR_SYSPLL_PCW_25M);
         val2 = ((val>>XTAL_SHIFT)&XTAL_MASK);
-        for (i=0; i< cpu_freq_last; i++) {
+        for (i=0; i< (int)cpu_freq_table_len(); i++) {
             if (val2 == cpu_freq_config_xtal25M[i])
                 break;
         }
@@ -313,13 +341,13 @@ unsigned int curr_armpll_clk_get (void)
     else { /* XTAL==20MHz */
         val = readReg(CR_SYSPLL_PCW_20M);
         val2 = ((val>>XTAL_SHIFT)&XTAL_MASK);
-        for (i=0; i< cpu_freq_last; i++) {
+        for (i=0; i< (int)cpu_freq_table_len(); i++) {
             if (val2 == cpu_freq_config_xtal20M[i])
                 break;
         }
     }
 
-    if (i< cpu_freq_last)
+    if (i< (int)cpu_freq_table_len())
         return armpll_clk_MHz[i];
     else {
         printf("ERROR: can't get armpll (isXtal25M:%d, SYSPLL_PCW value:0x%x)\n", isXtal25M, val);
@@ -464,6 +492,9 @@ int an7552_bootup_clk_src_switch(enum e_cpu_freq cpuFreq)
 {
     unsigned int val;
 
+    if (!is_valid_cpu_freq(cpuFreq))
+        return -1;
+
     /* disable PLL Write Protect */
     val = readReg(CR_PLL_WR_PROTECT);
     val &= (~0xff);
@@ -528,6 +559,10 @@ int en7523_armpll_set(enum e_cpu_freq cpuFreq)
     }
 #endif
 	
+	/* reject an out-of-range OPP index before touching any PLL register */
+	if (!is_valid_cpu_freq(cpuFreq))
+		return -1;
+
 	/* switch to PLL2_CLK */
 	if (clk_src_switch(clk_src_pll2)) {
 		printf("cpu clock switch to pll2 fail.\n");

@@ -392,13 +392,29 @@ uint64_t ecnt_avs_handler(uint32_t r1, uint32_t r2, uint32_t r3)
 			
 				/* New for Freq Scaling */
 	    case AVS_OP_FREQ_DYN_ADJ:
-             en7523_armpll_set(r3);
-             return ECNT_SIP_E_NOT_SUPPORTED;
+			/* Freq Scaling: program the ARM PLL to the requested OPP.
+			 * r3 = enum e_cpu_freq index (0 ~ cpu_freq_last-1).
+			 * Returns ECNT_SIP_E_SUCCESS(0) on success, or a negative
+			 * ECNT_SIP_E_* error code on failure.
+			 */
+			if (r3 >= (uint32_t)cpu_freq_last) {
+				printf("Warning : invalid freq index:%u (valid: 0~%d)\n",
+				       r3, (int)cpu_freq_last - 1);
+				return ECNT_SIP_E_INVALID_RANGE;
+			}
+			/* remember the boot frequency so FREQ_RECOVER can restore it */
+			if (oriarmpll == 0)
+				oriarmpll = curr_armpll_clk_get();
+			if (en7523_armpll_set((enum e_cpu_freq)r3) != 0) {
+				printf("Warning : set armpll to index:%u fail\n", r3);
+				return ECNT_SIP_E_INVALID_PARAM;
+			}
+			return ECNT_SIP_E_SUCCESS;
 
 				/* Get current clock frequency */
 	    case AVS_OP_GET_FREQ:	
-             oriarmpll = curr_armpll_clk_get();
-             return oriarmpll;				
+             /* do not touch oriarmpll: it keeps the frequency to restore */
+             return curr_armpll_clk_get();				
 			
 		default:
 			printf("Warning : ecnt_avs_handler r1 not support\n");
