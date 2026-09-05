@@ -4903,7 +4903,6 @@ SPI_NAND_FLASH_RTN_T SPI_NAND_Flash_Init(u32 rom_base)
 	SPI_NFI_CONF_SPARE_SIZE_T   spare_size_t;
 	SPI_NAND_FLASH_RTN_T	rtn_status = SPI_NAND_FLASH_RTN_PROBE_ERROR;	
 	int						ret = 0;
-	int dma_on;
 
 #ifdef TCSUPPORT_DSL_PHYMODE
 #if defined(TCSUPPORT_2_6_36_KERNEL) || defined(TCSUPPORT_3_18_21_KERNEL)
@@ -5037,7 +5036,7 @@ SPI_NAND_FLASH_RTN_T SPI_NAND_Flash_Init(u32 rom_base)
 			 * on board powering. Detect this issue and disable DMA to prevent
 			 * flash data damaging.
 			 */
-			dma_on = 1;
+			int dma_on = 1;
 #if defined(TCSUPPORT_CPU_EN7523) && !defined(TCSUPPORT_CPU_EN7581) && !defined(TCSUPPORT_CPU_AN7552) && !defined(TCSUPPORT_CPU_AN7583)
 			/* EN7523 SoC only, see above for UART_TX bootstrap pin issue */
 			if (!(get_sfc_strap() & 0x04))
