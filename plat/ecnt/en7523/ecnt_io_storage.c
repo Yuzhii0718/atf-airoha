@@ -65,7 +65,7 @@ static const io_block_spec_t fip_block_spec = {
 };
 #endif
 
-#if defined(TCSUPPORT_GPT_ATF_SUPPORT)
+#if defined(IMAGE_BL23) && defined(TCSUPPORT_GPT_ATF_SUPPORT)
 static size_t mmc_uda_read_blocks(int lba, uintptr_t buf, size_t size);
 
 static io_block_dev_spec_t mmc_dev_uda_spec = {
@@ -368,12 +368,13 @@ static int open_memmap(const uintptr_t spec)
 	return result;
 }
 
-#if defined(TCSUPPORT_GPT_ATF_SUPPORT)
+#if defined(IMAGE_BL23) && defined(TCSUPPORT_GPT_ATF_SUPPORT)
 static size_t mmc_uda_read_blocks(int lba, uintptr_t buf, size_t size)
 {
 	return mmc_read_blocks(lba, buf, size);
 }
 
+#if defined(IMAGE_BL23)
 static int airoha_mmc_gpt_init(void)
 {
 	static bool gpt_init_done = false;
@@ -410,6 +411,7 @@ static int airoha_mmc_gpt_image_setup(uintptr_t *dev_handle,
 
 	return 0;
 }
+#endif /* IMAGE_BL23 */
 
 int fill_io_block_spec_gpt(io_block_spec_t *spec, const char *name)
 {
