@@ -1,16 +1,18 @@
 #!/bin/bash
 #===============================================================================
-# build.sh - Universal SOC (an7581 / an7583 / an7552) BL2/BL31 firmware build
+# build.sh - Universal SOC (an7581 / an7583 / an7552 / en7523) BL2/BL31 build
 #
-# Usage: SOC=<an7581|an7583|an7552> [OPTEE=yes|no] ./build.sh [bl2|bl31|all]
+# Usage: SOC=<an7581|an7583|an7552|en7523> [OPTEE=yes|no] ./build.sh [bl2|bl31|all]
 #   OPTEE=yes enables OP-TEE (BL32) support, default: no
 #
 #   an7581 / an7583 : BL2 (aarch32) + BL31 built from source (aarch64).
 #   an7552 : BL2 (aarch32) + BL31 built from source (aarch32).
+#   en7523:                   AArch32 build only, BL1/BL31 are taken from the
+#                             prebuilt blobs in plat/ecnt/blobs/en7523/.
 #
 # Feature switches (UBI/GPT FIP storage, BL31 FIP offset override, SPI-NAND
 # ECC DMA reads, OP-TEE) mirror the per-SOC scripts build-an7581.sh /
-# build-an7583.sh / build-an7552.sh under scripts/.
+# build-an7583.sh / build-an7552.sh / build-en7523.sh under scripts/.
 #===============================================================================
 
 set -e
@@ -22,7 +24,7 @@ SOC="${SOC,,}" # Transform to lowercase
 
 if [ -z "${SOC}" ]; then
     echo -e "\033[0;31m[ERROR]\033[0m not specified SOC environment variable."
-    echo "Usage: SOC=<an7581|an7583|an7552> [OPTEE=yes|no] $0 [bl2|bl31|all]"
+    echo "Usage: SOC=<an7581|an7583|an7552|en7523> [OPTEE=yes|no] $0 [bl2|bl31|all]"
     echo "Example: SOC=an7583 $0 all"
     exit 1
 fi
@@ -37,15 +39,29 @@ case "${SOC}" in
     an7552)
         TCSUPPORT_FLAG="TCSUPPORT_CPU_AN7552=1"
         ;;
+    en7523)
+        TCSUPPORT_FLAG=""   # platform default, TCSUPPORT_CPU_EN7523 is set in the common flags
+        ;;
     *)
         echo -e "\033[0;31m[ERROR]\033[0m Not supported SOC: ${SOC}"
         exit 1
         ;;
 esac
 
+# an7581 / an7583 / an7552 build BL31 from source (aarch64) and use the eMMC /
+# GPT based FIP storage.  en7523 is built in AArch32 mode only: its BL1/BL31
+# come from the prebuilt blobs under plat/ecnt/blobs/en7523/, which is the way
+# scripts/build-en7523.sh does it.
 case "${SOC}" in
     an7552)
         SOC_BL31_MODE="src"
+        SOC_EMMC_FLAG=""
+        SOC_GPT_FLAG=""
+        SOC_UBOOT64_FLAG=""
+        SOC_CPU_DEFS=""
+        ;;
+    en7523)
+        SOC_BL31_MODE="blob"
         SOC_EMMC_FLAG=""
         SOC_GPT_FLAG=""
         SOC_UBOOT64_FLAG=""
@@ -212,13 +228,17 @@ check_environment() {
     fi
     info "ARM32: $(${AARCH32_CROSS}gcc --version | head -1)"
 
-    # --- AARCH64 Toolchain ---
-    if ! command -v aarch64-linux-gnu-gcc &>/dev/null; then
-        error "AARCH64 Toolchain not found: aarch64-linux-gnu-gcc"
-        error "Please install: sudo apt install -y gcc-aarch64-linux-gnu"
-        exit 1
+    # --- AARCH64 Toolchain (only needed when BL31 is built from source) ---
+    if [ "${SOC_BL31_MODE}" = "blob" ]; then
+        info "AARCH64 toolchain not required (${SOC}: BL31 comes from the prebuilt blob)"
+    else
+        if ! command -v aarch64-linux-gnu-gcc &>/dev/null; then
+            error "AARCH64 Toolchain not found: aarch64-linux-gnu-gcc"
+            error "Please install: sudo apt install -y gcc-aarch64-linux-gnu"
+            exit 1
+        fi
+        info "AARCH64: $(aarch64-linux-gnu-gcc --version | head -1)"
     fi
-    info "AARCH64: $(aarch64-linux-gnu-gcc --version | head -1)"
 
     # --- mbedtls ---
     if [ ! -d "${MBEDTLS_DIR}" ]; then
@@ -410,10 +430,47 @@ build_bl2() {
 }
 
 #------------------------------------------------------------------------------
-# Build BL31 (aarch64)
+# Pack prebuilt BL1/BL31 blobs (en7523: AArch32 build only)
+#------------------------------------------------------------------------------
+pack_bl31_blobs() {
+    step "Pack prebuilt BL1/BL31 blobs [${SOC_UPPER}]"
+
+    local BLOB_DIR="${ATF_DIR}/plat/ecnt/blobs/${SOC}"
+    local BL1_BLOB="${BLOB_DIR}/bl1.bin"
+    local BL31_BLOB="${BLOB_DIR}/bl31.bin"
+
+    mkdir -p "${OUTPUT_DIR}"
+    if [ ! -f "${BL31_BLOB}" ]; then
+        error "BL31 prebuilt blob not found: ${BL31_BLOB}"
+        error "Please obtain ${SOC} bl1.bin / bl31.bin from the ${SOC} SDK and put them under ${BLOB_DIR}/"
+        exit 1
+    fi
+
+    if [ -f "${BL1_BLOB}" ]; then
+        cp "${BL1_BLOB}" "${OUTPUT_DIR}/${SOC}-bl1.bin"
+        info "${SOC}-bl1.bin: $(stat -c%s ${OUTPUT_DIR}/${SOC}-bl1.bin) bytes"
+    else
+        warn "${SOC}-bl1.bin not found, skipped: ${BL1_BLOB}"
+    fi
+
+    cp "${BL31_BLOB}" "${OUTPUT_DIR}/bl31.bin"
+    info "BL31 blob: $(stat -c%s ${OUTPUT_DIR}/bl31.bin) bytes"
+
+    # lzma compression
+    ${SYSTEM_LZMA} -z -c "${BL31_BLOB}" > "${OUTPUT_DIR}/${SOC}-bl31.lzma"
+    info "BL31 lzma: $(stat -c%s ${OUTPUT_DIR}/${SOC}-bl31.lzma) bytes"
+}
+
+#------------------------------------------------------------------------------
+# Build BL31 (aarch64) / pack BL31 blobs (en7523)
 #------------------------------------------------------------------------------
 build_bl31() {
-    step "Build BL31 (aarch64) [${SOC_UPPER}]"
+    step "Build BL31 [${SOC_UPPER}]"
+
+    if [ "${SOC_BL31_MODE}" = "blob" ]; then
+        pack_bl31_blobs
+        return
+    fi
 
     cd "${ATF_DIR}"
     make ${COMMON_BL31_FLAGS} clean
@@ -447,7 +504,7 @@ print_summary() {
     echo ""
 
     local f size
-    for f in "${SOC}-bl2.bin" "${SOC}-bl31.lzma" bl31.bin bl21.bin bl22.lzma bl23.lzma; do
+    for f in "${SOC}-bl2.bin" "${SOC}-bl1.bin" "${SOC}-bl31.lzma" bl31.bin bl21.bin bl22.lzma bl23.lzma; do
         if [ -f "${OUTPUT_DIR}/${f}" ]; then
             size=$(stat -c%s "${OUTPUT_DIR}/${f}")
             printf "    %-30s  %10s bytes\n" "$f" "$size"
@@ -486,7 +543,7 @@ main() {
             build_bl31
             ;;
         *)
-            echo "Usage: SOC=<an7581|an7583|an7552> [OPTEE=yes|no] $0 [bl2|bl31|all]"
+            echo "Usage: SOC=<an7581|an7583|an7552|en7523> [OPTEE=yes|no] $0 [bl2|bl31|all]"
             echo "  OPTEE=yes - build with OP-TEE (BL32) support"
             echo "  bl2  - Only build BL2 (including BL21/BL22/BL23 + packaging)"
             echo "  bl31 - Only build BL31"
