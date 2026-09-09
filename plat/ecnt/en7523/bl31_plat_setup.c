@@ -25,7 +25,8 @@
 
 extern void bl31_db_entrypoint(void);
 extern int console_ecnt_register(uintptr_t baseaddr, console_t *console);
-#if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583)
+#if (defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583)) && \
+    !defined(TCSUPPORT_CPU_AN7552)
 extern int efuse_check_eco(void);
 #endif
 static entry_point_info_t bl32_ep_info;
@@ -395,7 +396,8 @@ void bl31_plat_arch_setup(void)
     l2c_sram_config(l2t_full_l2c);
 #endif
 
-#if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583)
+#if (defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583)) && \
+    !defined(TCSUPPORT_CPU_AN7552)
 	if (1 == efuse_check_eco())
 	{
 		mmio_setbits_32(RG_TOP_REV_24, (uint32_t)0x1 << 0);
