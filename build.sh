@@ -301,6 +301,35 @@ pack_bl2() {
 #------------------------------------------------------------------------------
 # Build BL2 3 stages (BL21 -> BL22 -> BL23)
 #------------------------------------------------------------------------------
+# The 3 BL2 stages share a single build directory and only differ by the
+# IMAGE_BL2x define.  `make clean` can silently fail (e.g. a bulk-delete
+# guard refuses to remove the object tree), in which case the next stage is
+# linked against the previous stage's objects and produces a truncated
+# image.  Drop the object tree up-front so every stage starts from scratch.
+# $(1) = output file of the stage about to be built (removed so a failed
+# build can never leave the previous stage's artifact behind)
+clean_bl2_tree() {
+    local out="$1"
+    local tree="${ATF_DIR}/build/${PLAT}/release"
+
+    rm -f  "${ATF_DIR}/${out}" 2>/dev/null || true
+    make ${COMMON_BL2_FLAGS} clean >/dev/null 2>&1 || true
+    # `make clean` can fail silently (bulk delete refused) and it re-creates
+    # the build directory, so drop the object tree afterwards and verify.
+    # Fall back to renaming the tree for environments where the bulk delete of
+    # hundreds of objects is refused.
+    rm -rf "${tree}" "${ATF_DIR}/build/${PLAT}/debug" 2>/dev/null || true
+    if [ -d "${tree}" ]; then
+        mv "${tree}" "${tree}.stale.$$" 2>/dev/null || true
+    fi
+
+    if [ -d "${tree}" ]; then
+        error "Cannot remove the BL2 object tree: ${tree}"
+        error "The next stage would be linked against the previous stage's objects."
+        exit 1
+    fi
+}
+
 build_bl2() {
     step "Build BL2 (3 stages: BL21, BL22, BL23) [${SOC_UPPER}]"
 
@@ -308,7 +337,7 @@ build_bl2() {
 
     # --- BL21: 1st stage (Not compressed) ---
     info "[1/3] Build BL21..."
-    make ${COMMON_BL2_FLAGS} clean
+    clean_bl2_tree bl21.bin
     make -j$(nproc) ${COMMON_BL2_FLAGS} IMAGE_BL21=1 bl2
     if [ ! -f "bl21.bin" ]; then
         error "bl21.bin not generated"
@@ -318,20 +347,30 @@ build_bl2() {
 
     # --- BL22: 2nd stage (lzma) ---
     info "[2/3] Build BL22..."
-    make ${COMMON_BL2_FLAGS} clean
+    clean_bl2_tree bl22.lzma
     make -j$(nproc) ${COMMON_BL2_FLAGS} IMAGE_BL22=1 bl2
     if [ ! -f "bl22.lzma" ]; then
         error "bl22.lzma not generated"
+        exit 1
+    fi
+    # BL22 carries the DRAM calibration code and is ~20 KB compressed.
+    if [ "$(stat -c%s bl22.lzma)" -lt 8192 ]; then
+        error "bl22.lzma looks truncated ($(stat -c%s bl22.lzma) bytes) - stale object tree?"
         exit 1
     fi
     info "BL22: $(stat -c%s bl22.lzma) bytes (lzma)"
 
     # --- BL23: 3rd stage (lzma) ---
     info "[3/3] Build BL23..."
-    make ${COMMON_BL2_FLAGS} clean
+    clean_bl2_tree bl23.lzma
     make -j$(nproc) ${COMMON_BL2_FLAGS} ${OPTEE_BL23_OPT} IMAGE_BL23=1 bl2
     if [ ! -f "bl23.lzma" ]; then
         error "bl23.lzma not generated"
+        exit 1
+    fi
+    # BL23 is the full featured BL2 and is ~40 KB compressed.
+    if [ "$(stat -c%s bl23.lzma)" -lt 20480 ]; then
+        error "bl23.lzma looks truncated ($(stat -c%s bl23.lzma) bytes) - stale object tree?"
         exit 1
     fi
     info "BL23: $(stat -c%s bl23.lzma) bytes (lzma)"
