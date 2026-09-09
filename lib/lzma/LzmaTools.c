@@ -73,6 +73,56 @@ int lzmaBuffToBuffDecompress(uintptr_t *inStream, size_t length, uintptr_t *outS
 		((unsigned char *)*inStream)[4], ((unsigned char *)*inStream)[5], ((unsigned char *)*inStream)[6], ((unsigned char *)*inStream)[7],
 		((unsigned char *)*inStream)[8], ((unsigned char *)*inStream)[9], ((unsigned char *)*inStream)[10], ((unsigned char *)*inStream)[11],
 		((unsigned char *)*inStream)[12]);
+#ifdef LZMA_DBG
+	{
+		const unsigned char *s = (const unsigned char *)*inStream;
+		unsigned int sum = 0;
+		size_t k;
+
+		/* Checksum of the whole compressed buffer: compare it against the
+		 * same sum computed on the host to tell whether the data in the
+		 * source memory is intact. */
+		for (k = 0; k < length; k++)
+			sum += s[k];
+
+		NOTICE("LZMA DBG: src sum=0x%08x len=0x%zx\n", sum, length);
+		NOTICE("LZMA DBG: src[13..28]=%02x %02x %02x %02x %02x %02x %02x %02x "
+		       "%02x %02x %02x %02x %02x %02x %02x %02x\n",
+			s[13], s[14], s[15], s[16], s[17], s[18], s[19], s[20],
+			s[21], s[22], s[23], s[24], s[25], s[26], s[27], s[28]);
+
+		/* Verify the destination buffer is really writable and that writes
+		 * can be read back (the decoder reads dic[] while decoding).
+		 * Byte and word accesses are checked separately: with the MMU off
+		 * this SoC's DRAM port only corrupts the narrow ones. */
+		{
+			volatile unsigned char *o = (volatile unsigned char *)*outStream;
+			volatile unsigned int *ow = (volatile unsigned int *)*outStream;
+			unsigned int j;
+
+			for (j = 0; j < 8; j++)
+				o[j] = (unsigned char)(0x5a + j);
+			NOTICE("LZMA DBG: dst byte test= %02x %02x %02x %02x %02x %02x %02x %02x (expect 5a 5b 5c 5d 5e 5f 60 61)\n",
+				o[0], o[1], o[2], o[3], o[4], o[5], o[6], o[7]);
+
+			ow[0] = 0x11223344u;
+			ow[1] = 0x55667788u;
+			NOTICE("LZMA DBG: dst word test= 0x%08x 0x%08x (expect 11223344 55667788)\n",
+				ow[0], ow[1]);
+		}
+
+		/* The probability table is an array of UInt16 allocated from the
+		 * work buffer, so make sure 16 bit accesses stick there. */
+		{
+			volatile unsigned short *w = (volatile unsigned short *)work_buf;
+
+			w[0] = 0x55aa;
+			w[1] = 0x1234;
+			NOTICE("LZMA DBG: work rw test=0x%04x 0x%04x (expect 55aa 1234)\n",
+				w[0], w[1]);
+		}
+	}
+#endif
 	INFO("LZMA: Image address............... 0x%lx\n", *inStream);
 	INFO("LZMA: Properties address.......... 0x%lx\n", *inStream + LZMA_PROPERTIES_OFFSET);
 	INFO("LZMA: Uncompressed size address... 0x%lx\n", *inStream + LZMA_SIZE_OFFSET);
