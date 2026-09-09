@@ -2,7 +2,12 @@
 #===============================================================================
 # build.sh - Universal SOC (an7581 / an7583) BL2/BL31 firmware build script
 #
-# Usage: SOC=<an7581|an7583> ./build.sh [bl2|bl31|all]
+# Usage: SOC=<an7581|an7583> [OPTEE=yes|no] ./build.sh [bl2|bl31|all]
+#   OPTEE=yes enables OP-TEE (BL32) support, default: no
+#
+# Feature switches (UBI/GPT FIP storage, BL31 FIP offset override, SPI-NAND
+# ECC DMA reads, OP-TEE) mirror the per-SOC scripts build-an7581.sh /
+# build-an7583.sh under scripts/.
 #===============================================================================
 
 set -e
@@ -14,7 +19,7 @@ SOC="${SOC,,}" # Transform to lowercase
 
 if [ -z "${SOC}" ]; then
     echo -e "\033[0;31m[ERROR]\033[0m not specified SOC environment variable."
-    echo "Usage: SOC=<an7581|an7583> $0 [bl2|bl31|all]"
+    echo "Usage: SOC=<an7581|an7583> [OPTEE=yes|no] $0 [bl2|bl31|all]"
     echo "Example: SOC=an7583 $0 all"
     exit 1
 fi
@@ -33,6 +38,50 @@ case "${SOC}" in
 esac
 
 SOC_UPPER="${SOC^^}"
+
+#------------------------------------------------------------------------------
+# Optional Feature Switches
+#
+# Aligned with the dedicated per-SOC build scripts (scripts/build-an7581.sh,
+# scripts/build-an7583.sh). They enable features added by later platform
+# commits (UBI / GPT based FIP storage, configurable BL31 FIP offset on eMMC,
+# SPI-NAND ECC DMA reads, OP-TEE) that the current en7523 platform code
+# expects.
+#
+# The -D switches below are NOT translated into compiler defines by the ATF
+# makefile by itself, so they are delivered through the standard BSP_CFLAGS
+# hook (the top-level Makefile appends BSP_CFLAGS to TF_CFLAGS whenever
+# TCSUPPORT_UBOOT is set).
+#------------------------------------------------------------------------------
+OPTEE="${OPTEE:-no}"    # OPTEE=yes -> build BL2/BL31 with OP-TEE (BL32) support
+
+BSP_CFLAGS="\
+    -fsigned-char \
+    -Wno-error=date-time \
+    -Wno-error=missing-include-dirs \
+    -Wno-error=redundant-decls \
+    -DTCSUPPORT_SPI_NAND_FLASH_ECC_DMA \
+    -DTCSUPPORT_BL2_OPTIMIZATION \
+    -DTCSUPPORT_CPU_ARMV8_64 \
+    -DTCSUPPORT_CPU_EN7521 \
+    -DTCSUPPORT_CPU_EN7580 \
+    -DTCSUPPORT_CPU_EN7581 \
+    -DTCSUPPORT_CPU_MT7520 \
+    -DTCSUPPORT_KERNEL_API \
+    -DTCSUPPORT_LITTLE_ENDIAN \
+    -DTCSUPPORT_UBI_SUPPORT \
+    -DOVERRIDE_UBI_START_ADDR=0x100000 \
+    -DTCSUPPORT_GPT_ATF_SUPPORT \
+    -DOVERRIDE_PLAT_ECNT_BL31_FIP_OFFSET=0x84000"
+
+OPTEE_BL23_OPT=""   # extra make vars for BL23 when OP-TEE is enabled
+OPTEE_BL31_OPT=""   # extra make vars for BL31 when OP-TEE is enabled
+if [ "${OPTEE}" = "yes" ]; then
+    BSP_CFLAGS="${BSP_CFLAGS} -DTCSUPPORT_OPTEE"
+    OPTEE_BL23_OPT="TCSUPPORT_OPTEE=1"
+    OPTEE_BL31_OPT="TCSUPPORT_OPTEE=1 SPD=opteed"
+fi
+export BSP_CFLAGS
 
 #------------------------------------------------------------------------------
 # Path and Toolchain Configuration
@@ -74,6 +123,9 @@ COMMON_BL2_FLAGS="\
     TCSUPPORT_UBOOT_64BIT=1 \
     TCSUPPORT_EMMC=1 \
     TCSUPPORT_UBOOT=1 \
+    TCSUPPORT_UBI_SUPPORT=1 \
+    TCSUPPORT_GPT_ATF_SUPPORT=1 \
+    TCSUPPORT_BB_FIX_UNOPEN=1 \
     TCSUPPORT_BL2_OPTIMIZATION=1"
 
 COMMON_BL31_FLAGS="\
@@ -86,6 +138,12 @@ COMMON_BL31_FLAGS="\
     ${TCSUPPORT_FLAG} \
     TCSUPPORT_CPU_EN7523=1 \
     TCSUPPORT_CPU_ARMV8=1 \
+    TCSUPPORT_UBOOT_64BIT=1 \
+    TCSUPPORT_EMMC=1 \
+    TCSUPPORT_UBOOT=1 \
+    TCSUPPORT_UBI_SUPPORT=1 \
+    TCSUPPORT_GPT_ATF_SUPPORT=1 \
+    TCSUPPORT_BB_FIX_UNOPEN=1 \
     TCSUPPORT_BL2_OPTIMIZATION=1 \
     MBEDTLS_DIR=${MBEDTLS_DIR}"
 
@@ -271,7 +329,7 @@ build_bl2() {
     # --- BL23: 3rd stage (lzma) ---
     info "[3/3] Build BL23..."
     make ${COMMON_BL2_FLAGS} clean
-    make -j$(nproc) ${COMMON_BL2_FLAGS} IMAGE_BL23=1 bl2
+    make -j$(nproc) ${COMMON_BL2_FLAGS} ${OPTEE_BL23_OPT} IMAGE_BL23=1 bl2
     if [ ! -f "bl23.lzma" ]; then
         error "bl23.lzma not generated"
         exit 1
@@ -290,7 +348,7 @@ build_bl31() {
 
     cd "${ATF_DIR}"
     make ${COMMON_BL31_FLAGS} clean
-    make -j$(nproc) ${COMMON_BL31_FLAGS} bl31
+    make -j$(nproc) ${COMMON_BL31_FLAGS} ${OPTEE_BL31_OPT} bl31
 
     local BL31_BIN="build/${PLAT}/release/bl31.bin"
     if [ ! -f "${BL31_BIN}" ]; then
@@ -342,6 +400,7 @@ main() {
     echo "  Source: ${ATF_DIR}"
     echo "  (Full ATF 2.10 + atf-airoha ECNT platform code)"
     echo "  Output: ${OUTPUT_DIR}"
+    echo "  OPTEE: ${OPTEE}"
     echo "==========================================================================="
 
     check_environment
@@ -358,7 +417,8 @@ main() {
             build_bl31
             ;;
         *)
-            echo "Usage: SOC=<an7581|an7583> $0 [bl2|bl31|all]"
+            echo "Usage: SOC=<an7581|an7583> [OPTEE=yes|no] $0 [bl2|bl31|all]"
+            echo "  OPTEE=yes - build with OP-TEE (BL32) support"
             echo "  bl2  - Only build BL2 (including BL21/BL22/BL23 + packaging)"
             echo "  bl31 - Only build BL31"
             echo "  all  - Build everything (default)"
