@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <lib/mmio.h>
 #include <drivers/delay_timer.h>
+#include <common/debug.h>
 #else /* UBoot */
 #include <asm/io.h>
 #include <common.h>
@@ -26,7 +27,7 @@
 #define CR_CPUPLL_SDM_PCW   (IO_PHYS + 0xFA202AC)
 #define CR_CPUPLL_SDM_PCW_CHG	(IO_PHYS + 0xFA202B0)
 #define CR_CPUPLL_SDM_SSC_PRD	(IO_PHYS + 0xFA202B8)
-#define PCW_MASK            (0xff)
+#define PCW_MASK            (0xffU)
 #define PCW_SHIFT           (24)
 #define POSDIV_MASK         (0x7)
 #define POSDIV_SHIFT        (18)
@@ -36,7 +37,7 @@
 #define CR_CPUPLL_SDM_PCW   (IO_PHYS + 0xFA202B4)
 #define CR_CPUPLL_SDM_PCW_CHG   (IO_PHYS + 0xFA202B8)
 #define CR_CPUPLL_SDM_SSC_PRD (0) // AN7552 only
-#define PCW_MASK            (0xff)
+#define PCW_MASK            (0xffU)
 #define PCW_SHIFT           (24)
 #define POSDIV_MASK         (0x7)
 #define POSDIV_SHIFT        (4)
@@ -46,7 +47,7 @@
 #define CR_CPUPLL_SDM_PCW   (IO_PHYS + 0xFA202AC)
 #define CR_CPUPLL_SDM_PCW_CHG   (IO_PHYS + 0xFA202B0)
 #define CR_CPUPLL_SDM_SSC_PRD   (IO_PHYS + 0xFA202B8)
-#define PCW_MASK            (0xff)
+#define PCW_MASK            (0xffU)
 #define PCW_SHIFT           (24)
 #define POSDIV_MASK         (0x7)
 #define POSDIV_SHIFT        (18)

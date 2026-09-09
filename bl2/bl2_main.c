@@ -106,7 +106,7 @@ void bl2_setup(u_register_t arg0, u_register_t arg1, u_register_t arg2,
  ******************************************************************************/
 void bl2_main(void)
 {
-	entry_point_info_t *next_bl_ep_info;
+	[[maybe_unused]] entry_point_info_t *next_bl_ep_info;
 
 #if ENABLE_RUNTIME_INSTRUMENTATION
 	PMF_CAPTURE_TIMESTAMP(bl_svc, BL2_ENTRY, PMF_CACHE_MAINT);

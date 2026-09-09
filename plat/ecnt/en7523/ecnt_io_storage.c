@@ -42,7 +42,6 @@ static const io_dev_connector_t *fip_dev_con;
 static uintptr_t fip_dev_handle;
 static const io_dev_connector_t *memmap_dev_con;
 static uintptr_t memmap_dev_handle;
-static const io_dev_connector_t *enc_dev_con;
 static uintptr_t enc_dev_handle;
 #if defined(TCSUPPORT_GPT_ATF_SUPPORT)
 static uintptr_t mmc_dev_uda_handle;
@@ -455,7 +454,7 @@ void plat_ecnt_io_setup(const hw_trap_t *hw_trap)
 	    (!hw_trap->fw_upgrade_mode || hw_trap->skip_fw_upgrade || plat_get_hw_bypass())) {
 		policies[FIP_IMAGE_ID] = &fip_ubi_policy;
 		io_result = mtk_fip_image_setup(&ubi_dev_handle,
-						&policies[FIP_IMAGE_ID]->image_spec);
+				(uintptr_t *)&policies[FIP_IMAGE_ID]->image_spec);
 		assert(io_result == 0);
 	}
 #endif
@@ -464,8 +463,8 @@ void plat_ecnt_io_setup(const hw_trap_t *hw_trap)
 	if(hw_trap->is_emmc &&
 	   (!hw_trap->fw_upgrade_mode || hw_trap->skip_fw_upgrade || plat_get_hw_bypass())) {
 		int ret = airoha_mmc_gpt_image_setup(&mmc_dev_uda_handle,
-						     &policies[GPT_IMAGE_ID]->image_spec,
-						     &policies[BKUP_GPT_IMAGE_ID]->image_spec);
+						     (uintptr_t *)&policies[GPT_IMAGE_ID]->image_spec,
+						     (uintptr_t *)&policies[BKUP_GPT_IMAGE_ID]->image_spec);
 		if (ret)
 			panic();
 
@@ -489,6 +488,7 @@ void plat_ecnt_io_setup(const hw_trap_t *hw_trap)
 	assert(io_result == 0);
 
 #if !defined(TCSUPPORT_UBI_SUPPORT) && !defined(TCSUPPORT_EMMC)
+	static const io_dev_connector_t *enc_dev_con;
 	io_result = register_io_dev_enc(&enc_dev_con);
 	assert(io_result == 0);
 

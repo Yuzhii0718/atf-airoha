@@ -2100,7 +2100,7 @@ static SPI_NAND_FLASH_RTN_T spi_nand_read_internal(
 #else
 	u32								read_addr, physical_read_addr;
 #endif
-	u32			 					remain_len, logical_block, physical_block;
+	u32			 					remain_len;
 	struct SPI_NAND_FLASH_INFO_T	*ptr_dev_info_t;
 	SPI_NAND_FLASH_RTN_T			rtn_status = SPI_NAND_FLASH_RTN_NO_ERROR;
 	SPI_ECC_RTN_T					ecc_status = SPI_ECC_RTN_NO_ERROR;
@@ -2113,6 +2113,7 @@ static SPI_NAND_FLASH_RTN_T spi_nand_read_internal(
 #if	defined(TCSUPPORT_NAND_BMT) && ((!defined(LZMA_IMG) && !defined(BOOTROM_EXT)) || defined(TCSUPPORT_BB_256KB))
     unsigned short phy_block_bbt;
 	unsigned long  addr_offset_in_block;
+	u32			  logical_block, physical_block;
 	/* for exceed 64bits address */
 	u64	physical_block_tmp, erase_size_tmp;
 #endif
@@ -4190,7 +4191,6 @@ int en7512_nand_check_block_bad(u32 offset, u32 bmt_block)
 {
 	u32								page_number;
 	struct SPI_NAND_FLASH_INFO_T	*ptr_dev_info_t;
-	u8								bbValue = 0;
 	SPI_NAND_FLASH_RTN_T			rtn_status = SPI_NAND_FLASH_RTN_NO_ERROR;
 
 	ptr_dev_info_t  = _SPI_NAND_GET_DEVICE_INFO_PTR;	
@@ -4221,6 +4221,7 @@ int en7512_nand_check_block_bad(u32 offset, u32 bmt_block)
 	}
 
 #if defined(TCSUPPORT_NAND_BMT)
+	u8								bbValue = 0;
 	if(bmt_block) {
 		if(ptr_dev_info_t->feature & SPI_NAND_FLASH_OOB_RESERVE_FOR_BMT) {
 			bbValue = _current_cache_page_oob_mapping[ooblayout_feature7.oobfree[0].offset] = 0;

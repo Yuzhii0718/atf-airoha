@@ -118,7 +118,7 @@ void dyn_disable_auth(void)
 /******************************************************************************
  * Function to determine whether the authentication is disabled dynamically.
  *****************************************************************************/
-static int dyn_is_auth_disabled(void)
+[[maybe_unused]] static int dyn_is_auth_disabled(void)
 {
 #ifdef DYN_DISABLE_AUTH
 #if defined(TCSUPPORT_ARM_SECURE_BOOT_FLASH_KEY)

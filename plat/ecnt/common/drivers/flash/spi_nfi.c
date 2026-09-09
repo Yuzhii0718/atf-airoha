@@ -351,7 +351,6 @@ static int isInit = 0;
 #define _SPI_NFI_MEMSET					memset
 #define _SPI_NFI_MAX_FDM_NUMBER			(64)
 #define _SPI_NFI_MAX_FDM_PER_SEC		(8)
-extern u32 GET_NP_SCU_EMMC(void);
 
 /* TYPE DECLARATIONS ----------------------------------------------------------------- */
 
