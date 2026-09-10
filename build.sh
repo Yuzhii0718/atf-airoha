@@ -1,13 +1,16 @@
 #!/bin/bash
 #===============================================================================
-# build.sh - Universal SOC (an7581 / an7583) BL2/BL31 firmware build script
+# build.sh - Universal SOC (an7581 / an7583 / an7552) BL2/BL31 firmware build
 #
-# Usage: SOC=<an7581|an7583> [OPTEE=yes|no] ./build.sh [bl2|bl31|all]
+# Usage: SOC=<an7581|an7583|an7552> [OPTEE=yes|no] ./build.sh [bl2|bl31|all]
 #   OPTEE=yes enables OP-TEE (BL32) support, default: no
+#
+#   an7581 / an7583 : BL2 (aarch32) + BL31 built from source (aarch64).
+#   an7552 : BL2 (aarch32) + BL31 built from source (aarch32).
 #
 # Feature switches (UBI/GPT FIP storage, BL31 FIP offset override, SPI-NAND
 # ECC DMA reads, OP-TEE) mirror the per-SOC scripts build-an7581.sh /
-# build-an7583.sh under scripts/.
+# build-an7583.sh / build-an7552.sh under scripts/.
 #===============================================================================
 
 set -e
@@ -19,7 +22,7 @@ SOC="${SOC,,}" # Transform to lowercase
 
 if [ -z "${SOC}" ]; then
     echo -e "\033[0;31m[ERROR]\033[0m not specified SOC environment variable."
-    echo "Usage: SOC=<an7581|an7583> [OPTEE=yes|no] $0 [bl2|bl31|all]"
+    echo "Usage: SOC=<an7581|an7583|an7552> [OPTEE=yes|no] $0 [bl2|bl31|all]"
     echo "Example: SOC=an7583 $0 all"
     exit 1
 fi
@@ -31,9 +34,29 @@ case "${SOC}" in
     an7583)
         TCSUPPORT_FLAG="TCSUPPORT_CPU_AN7583=1"
         ;;
+    an7552)
+        TCSUPPORT_FLAG="TCSUPPORT_CPU_AN7552=1"
+        ;;
     *)
         echo -e "\033[0;31m[ERROR]\033[0m Not supported SOC: ${SOC}"
         exit 1
+        ;;
+esac
+
+case "${SOC}" in
+    an7552)
+        SOC_BL31_MODE="src"
+        SOC_EMMC_FLAG=""
+        SOC_GPT_FLAG=""
+        SOC_UBOOT64_FLAG=""
+        SOC_CPU_DEFS=""
+        ;;
+    *)
+        SOC_BL31_MODE="src"
+        SOC_EMMC_FLAG="TCSUPPORT_EMMC=1"
+        SOC_GPT_FLAG="TCSUPPORT_GPT_ATF_SUPPORT=1"
+        SOC_UBOOT64_FLAG="TCSUPPORT_UBOOT_64BIT=1"
+        SOC_CPU_DEFS="-DTCSUPPORT_CPU_ARMV8_64 -DTCSUPPORT_CPU_EN7581"
         ;;
 esac
 
@@ -43,10 +66,10 @@ SOC_UPPER="${SOC^^}"
 # Optional Feature Switches
 #
 # Aligned with the dedicated per-SOC build scripts (scripts/build-an7581.sh,
-# scripts/build-an7583.sh). They enable features added by later platform
-# commits (UBI / GPT based FIP storage, configurable BL31 FIP offset on eMMC,
-# SPI-NAND ECC DMA reads, OP-TEE) that the current en7523 platform code
-# expects.
+# scripts/build-an7583.sh, scripts/build-an7552.sh).
+# They enable features added by later platform commits (UBI / GPT based FIP
+# storage, configurable BL31 FIP offset on eMMC, SPI-NAND ECC DMA reads,
+# OP-TEE).
 #
 # The -D switches below are NOT translated into compiler defines by the ATF
 # makefile by itself, so they are delivered through the standard BSP_CFLAGS
@@ -62,17 +85,20 @@ BSP_CFLAGS="\
     -Wno-error=redundant-decls \
     -DTCSUPPORT_SPI_NAND_FLASH_ECC_DMA \
     -DTCSUPPORT_BL2_OPTIMIZATION \
-    -DTCSUPPORT_CPU_ARMV8_64 \
+    -DTCSUPPORT_CPU_ARMV8 \
     -DTCSUPPORT_CPU_EN7521 \
+    -DTCSUPPORT_CPU_EN7523 \
     -DTCSUPPORT_CPU_EN7580 \
-    -DTCSUPPORT_CPU_EN7581 \
     -DTCSUPPORT_CPU_MT7520 \
     -DTCSUPPORT_KERNEL_API \
     -DTCSUPPORT_LITTLE_ENDIAN \
     -DTCSUPPORT_UBI_SUPPORT \
     -DOVERRIDE_UBI_START_ADDR=0x100000 \
-    -DTCSUPPORT_GPT_ATF_SUPPORT \
-    -DOVERRIDE_PLAT_ECNT_BL31_FIP_OFFSET=0x84000"
+    ${SOC_CPU_DEFS}"
+
+if [ -n "${SOC_GPT_FLAG}" ]; then
+    BSP_CFLAGS="${BSP_CFLAGS} -DTCSUPPORT_GPT_ATF_SUPPORT -DOVERRIDE_PLAT_ECNT_BL31_FIP_OFFSET=0x84000"
+fi
 
 OPTEE_BL23_OPT=""   # extra make vars for BL23 when OP-TEE is enabled
 OPTEE_BL31_OPT=""   # extra make vars for BL31 when OP-TEE is enabled
@@ -108,10 +134,14 @@ PLAT="en7523"
 #------------------------------------------------------------------------------
 # Universal Build Flags for BL2 and BL31
 #------------------------------------------------------------------------------
+# Note: the top-level Makefile resolves the aarch32 compiler to ARM32TOOLCHAIN_BASE
+# only for an7581/an7583. an7552 must set CROSS_COMPILE_ATF explicitly, so it is
+# provided for every SOC (same toolchain prefix as ARM32TOOLCHAIN_BASE).
 COMMON_BL2_FLAGS="\
     PLAT=${PLAT} \
     ARCH=aarch32 \
     ARM32TOOLCHAIN_BASE=${AARCH32_CROSS} \
+    CROSS_COMPILE_ATF=${AARCH32_CROSS} \
     MBEDTLS_DIR=${MBEDTLS_DIR} \
     TOOLS_DIR=${LZMA_WRAPPER_DIR}/ \
     CONFIG_ECNT=1 \
@@ -120,11 +150,11 @@ COMMON_BL2_FLAGS="\
     ${TCSUPPORT_FLAG} \
     TCSUPPORT_CPU_EN7523=1 \
     TCSUPPORT_CPU_ARMV8=1 \
-    TCSUPPORT_UBOOT_64BIT=1 \
-    TCSUPPORT_EMMC=1 \
+    ${SOC_UBOOT64_FLAG} \
+    ${SOC_EMMC_FLAG} \
     TCSUPPORT_UBOOT=1 \
     TCSUPPORT_UBI_SUPPORT=1 \
-    TCSUPPORT_GPT_ATF_SUPPORT=1 \
+    ${SOC_GPT_FLAG} \
     TCSUPPORT_BB_FIX_UNOPEN=1 \
     TCSUPPORT_BL2_OPTIMIZATION=1"
 
@@ -138,11 +168,11 @@ COMMON_BL31_FLAGS="\
     ${TCSUPPORT_FLAG} \
     TCSUPPORT_CPU_EN7523=1 \
     TCSUPPORT_CPU_ARMV8=1 \
-    TCSUPPORT_UBOOT_64BIT=1 \
-    TCSUPPORT_EMMC=1 \
+    ${SOC_UBOOT64_FLAG} \
+    ${SOC_EMMC_FLAG} \
     TCSUPPORT_UBOOT=1 \
     TCSUPPORT_UBI_SUPPORT=1 \
-    TCSUPPORT_GPT_ATF_SUPPORT=1 \
+    ${SOC_GPT_FLAG} \
     TCSUPPORT_BB_FIX_UNOPEN=1 \
     TCSUPPORT_BL2_OPTIMIZATION=1 \
     MBEDTLS_DIR=${MBEDTLS_DIR}"
@@ -456,7 +486,7 @@ main() {
             build_bl31
             ;;
         *)
-            echo "Usage: SOC=<an7581|an7583> [OPTEE=yes|no] $0 [bl2|bl31|all]"
+            echo "Usage: SOC=<an7581|an7583|an7552> [OPTEE=yes|no] $0 [bl2|bl31|all]"
             echo "  OPTEE=yes - build with OP-TEE (BL32) support"
             echo "  bl2  - Only build BL2 (including BL21/BL22/BL23 + packaging)"
             echo "  bl31 - Only build BL31"
