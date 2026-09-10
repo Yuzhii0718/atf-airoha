@@ -10,6 +10,7 @@
 
 #include <plat_private.h>
 
+#include <arch_helpers.h>
 #include <common/debug.h>
 #include <drivers/io/io_driver.h>
 #include <drivers/io/io_ubi.h>
@@ -36,6 +37,7 @@ extern int nandflash_write(unsigned long to, unsigned long len, u32 *retlen, uns
 extern int nandflash_erase(unsigned long offset, unsigned long len);
 extern int en7512_nand_check_block_bad(u32 offset, u32 bmt_block);
 extern int mtk_plat_nand_setup(size_t *page_size, size_t *block_size, uint32_t *size);
+extern void ubispl_init_scan(struct io_ubi_dev_spec *info, int fastmap);
 size_t page_size, block_size;
 uint32_t nand_size;
 
@@ -82,6 +84,30 @@ static const io_ubi_spec_t ubi_dev_fip_spec = {
 	.vol_name = "fip",
 };
 
+/*
+ * Scan the UBI area to locate the "fip" volume and report how long it took.
+ * The scan is normally done lazily on the first access to the volume; do it
+ * here so the boot time spent scanning UBI can be measured. The result is
+ * cached (init_done) to avoid scanning twice.
+ */
+static void ubi_scan_fip_timed(void)
+{
+	uint64_t freq = read_cntfrq_el0();
+	uint64_t start, delta;
+
+	if (freq == 0)
+		freq = 1;
+
+	start = read_cntpct_el0();
+	ubispl_init_scan(&nand_ubi_dev_spec, nand_ubi_dev_spec.fastmap);
+	delta = read_cntpct_el0() - start;
+
+	NOTICE("UBI scan for fip took %" PRIu64 " us\n",
+	       (delta * 1000000ULL) / freq);
+
+	nand_ubi_dev_spec.init_done = 1;
+}
+
 int mtk_fip_image_setup(uintptr_t *dev_handle, uintptr_t *image_spec)
 {
 	const io_dev_connector_t *dev_con;
@@ -105,6 +131,8 @@ int mtk_fip_image_setup(uintptr_t *dev_handle, uintptr_t *image_spec)
 	ret = io_dev_open(dev_con, (uintptr_t)&nand_ubi_dev_spec, dev_handle);
 	if (ret)
 		return ret;
+
+	ubi_scan_fip_timed();
 
 	*image_spec = (uintptr_t)&ubi_dev_fip_spec;
 
