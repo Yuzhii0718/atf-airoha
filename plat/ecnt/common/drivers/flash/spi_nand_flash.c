@@ -2509,10 +2509,12 @@ static int spi_nand_cache_read(u32 page, u32 offset, u32 len, u8 *buf)
  *   OUTPUT: buf  - destination buffer
  * RETURN  : 0 - Successful.   Otherwise -1.
  * NOTES   :
- *   -1 is also returned when the SoC ECC engine owns the data path.  That
- *   engine corrects the data while it is streamed out of the chip cache, so a
- *   partial transfer would bypass the correction.  Callers must fall back to
- *   nandflash_read() in that case.
+ *   -1 is also returned when the fast path would be slower or unsafe and the
+ *   caller must fall back to nandflash_read():
+ *     - the SoC ECC engine corrects the data while it is streamed out of the
+ *       chip cache, so a partial transfer would bypass the correction;
+ *     - with the controller DMA active, a request covering at least one whole
+ *       page is faster through the full page DMA path.
  *
  *------------------------------------------------------------------------------------
  */
@@ -2531,6 +2533,9 @@ int nandflash_read_range(unsigned long from, unsigned long len,
 
 	ptr_dev_info_t = _SPI_NAND_GET_DEVICE_INFO_PTR;
 	page_size = ptr_dev_info_t->page_size;
+
+	if (_spi_dma_mode == SPI_DMA_MODE_ENABLE && len >= page_size)
+		return -1;
 
 	for (addr = from, remain = len; remain > 0; ) {
 		chunk = page_size - (addr % page_size);
