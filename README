@@ -41,6 +41,51 @@ REQUIREMENTS:
      other object files    -- extract from archieve
                               ${SDK32}/airoha_feeds/package/airoha/bootloader/bootloader/unopen_img/${profile}/atf/bl2/libbl2.a
 
+   Notes on bl23/:
+     * ecnt_npu_img.o is required: make_helpers/build_macros.mk copies it
+       unconditionally (the recipe has no leading '-', so the build fails
+       if it is missing).  It only carries the NPU firmware
+       (npu_rv32.bin / npu_data.bin) inside the BL23 image.
+     * cortex_a53.o is listed above for parity with the vendor layout, but
+       this tree does not copy it: BL2/BL23 build lib/cpus/aarch64/cortex_a53.S
+       from source instead.  Installing it is harmless.
+
+2a) Extracting the blobs from a vendor ATF release (no SDK required)
+
+   If you already have the ATF artefacts of a working vendor firmware
+   (in this repository they are kept under reference/, see
+   reference/UNION_EN7523_GLIBC_7916_7916_ActiveEthWan_demo/atf), the blobs
+   can be produced with:
+
+     REF=reference/UNION_EN7523_GLIBC_7916_7916_ActiveEthWan_demo/atf
+     BLOB=plat/ecnt/blobs/en7523
+     AR=$(command -v arm-none-eabi-ar || echo ar)
+
+     mkdir -p ${BLOB}/bl22 ${BLOB}/bl23
+
+     # BL1/BL31 are plain binaries shipped next to the ATF tree
+     cp ${REF}/bl1.bin ${REF}/bl31.bin ${BLOB}/
+
+     # dramc.o is a loose object file (it is not part of libbl2.a)
+     cp ${REF}/bl2/dramc.o ${BLOB}/bl22/
+
+     # everything else lives inside the libbl2.a archive
+     ar -x ${REF}/bl2/libbl2.a \
+        efuse.o efuse_load.o hal_io.o \
+        dramc_pi_basic_api.o dramc_pi_calibration_api.o dramc_pi_main.o \
+        ecnt_npu_img.o
+     mv efuse.o efuse_load.o hal_io.o \
+        dramc_pi_basic_api.o dramc_pi_calibration_api.o dramc_pi_main.o \
+        ${BLOB}/bl22/
+     mv efuse.o efuse_load.o ecnt_npu_img.o ${BLOB}/bl23/
+
+   Do NOT mix objects coming from different vendor releases: the DRAMC
+   objects of a build that boots with wrong DRAM contents are NOT
+   interchangeable with a good one, and mixing them silently produces a
+   broken image (wrong DRAM size, corrupted memory).  Verify the result by
+   the DRAMC banner, e.g. "EN7523DRAMC V0.2" followed by
+   "DRAM size=512MB".
+
 3) Prepare building directory with the following command
 
      ${this_repo_path}/scripts/build-prepare.sh
@@ -86,6 +131,28 @@ REQUIREMENTS:
      out/${SOC}/
 
    directory
+
+   Alternatively, the in-tree entry point 'build.sh' at the root of this
+   repository performs the same steps without the 'build-prepare.sh'
+   out-of-tree setup.  It needs the cross toolchain in the PATH:
+
+      $ SOC=en7523 ./build.sh bl2      # BL21 + BL22(lzma) + BL23(lzma)
+      $ SOC=en7523 ./build.sh bl31     # pack the prebuilt BL1/BL31 blobs
+      $ SOC=en7523 ./build.sh all
+
+   Artefacts are written to 'output/en7523/':
+
+      en7523-bl2.bin    combined BL2 (bl21.bin + bl22.lzma + bl23.lzma
+                        + flash table)
+      bl21.bin          stage 1, not compressed
+      bl22.lzma         stage 2, carries the DRAM calibration
+      bl23.lzma         stage 3, full featured
+      en7523-bl1.bin    prebuilt blob, copied from blobs/en7523/bl1.bin
+      bl31.bin          prebuilt blob, copied from blobs/en7523/bl31.bin
+      bl31.lzma         prebuilt blob, copied from blobs/en7523/bl31.lzma
+
+   Sanity checks: the decompressed BL22/BL23 images must stay below the
+   0x19000 byte BL2 staging buffer.
 
 7) You may also run 'build-flash-images.sh' to create ready to flash ATF images
 
