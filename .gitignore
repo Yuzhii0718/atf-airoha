@@ -64,3 +64,6 @@ output/
 *.bin
 *.elf
 *.lzma
+
+# Reference
+reference/
