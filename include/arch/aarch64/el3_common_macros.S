@@ -103,9 +103,21 @@
 	/* ---------------------------------------------------------------------
 	 * Initialise CPTR_EL3, setting all fields rather than relying on hw.
 	 * All fields are architecturally UNKNOWN on reset.
+	 *
+	 * TCPAC, TAM, TTA and TFP are cleared (CPTR_EL3 becomes 0) so that the
+	 * non-secure world can access CPACR/CPTR and the trace/AM registers and,
+	 * most importantly, use the floating-point/Advanced SIMD (VFP/NEON) unit
+	 * without trapping to EL3.
+	 *
+	 * Upstream >= 2.4 keeps TFP set in CPTR_EL3_RESET_VAL and only clears it
+	 * through sve_enable_per_world()/sme_enable_per_world(), which never run
+	 * on cores without SVE/SME.  That breaks the AArch32 non-secure world of
+	 * this platform (32-bit U-Boot/Linux use VFP/NEON and hang on the first
+	 * trapped instruction).  This matches the TF-A <= 2.3 reset value and the
+	 * vendor BL31 binaries (which program CPTR_EL3 = 0).
 	 * ---------------------------------------------------------------------
 	 */
-	mov_imm x0, CPTR_EL3_RESET_VAL
+	mov_imm x0, (CPTR_EL3_RESET_VAL & ~(TCPAC_BIT | TAM_BIT | TTA_BIT | TFP_BIT))
 	msr	cptr_el3, x0
 
 	/*
