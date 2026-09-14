@@ -613,7 +613,8 @@ ifeq ($(IMAGE_BL23),1)
 	cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl23/efuse* $(BUILD_DIR)/ ;
 	cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl23/ecnt_npu_img.o $(BUILD_DIR)/ ;
 endif
-	if [ "$$(basename $$(notdir $$@))" = "bl31" ] ; then \
+	if [ -d $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl31 ] && \
+	   [ "$$(basename $$(notdir $$@))" = "bl31" ] ; then \
 		cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl31/efuse* $(BUILD_DIR)/ ; \
 		cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl31/Hal_io.o $(BUILD_DIR)/ ; \
 		cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl31/DDR3_dram_init.o $(BUILD_DIR)/ ; \
