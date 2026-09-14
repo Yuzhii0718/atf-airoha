@@ -31,6 +31,23 @@ enum e_cpu_freq {
     cpu_freq_1500M,
     cpu_freq_1550M,
     cpu_freq_1600M,
+#elif !defined(TCSUPPORT_CPU_AN7552)
+    /*
+     * EN7523 family (EN7523 / EN7562 / EN7529...).
+     *
+     * The ARM PLL is programmed through the SYSPLL PCW register, whose vendor
+     * table covers 500..1200MHz in 50MHz steps, so these indices are valid.
+     * They must stay in sync with cpu_freq_config_xtal25M/xtal20M[] and with
+     * the non-secure world: airoha-cpufreq / clk-en7523 turn a rate into an
+     * index with state = (rate - 500MHz) / 50MHz, so asking for e.g. 1.0GHz
+     * (EN7562CT) sends index 10 here; rejecting it floods the console with
+     * "ERROR: invalid cpuFreq:10 (valid range: 0~9)" on every cpufreq update.
+     * AN7552 stops at 1.0GHz, hence the #elif above.
+     */
+    cpu_freq_1050M,
+    cpu_freq_1100M,
+    cpu_freq_1150M,
+    cpu_freq_1200M,
 #endif
     cpu_freq_last
 };

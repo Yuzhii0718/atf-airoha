@@ -94,9 +94,26 @@ static unsigned char cpu_freq_config_pcw[]=     { 0x14, 0x16, 0x18, 0x1A, 0x1C, 
 static unsigned char cpu_freq_config_posdiv[]=  {VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_0};
 static char *clk_src_name[]={"xtal(50MHz)","armpll(500~1000MHz)","pll1(540MHz)","pll2(400MHz)"};
 #else
-static unsigned char cpu_freq_config_xtal25M[]= {0x28, 0x2c, 0x30, 0x34, 0x38, 0x3c, 0x40, 0x44, 0x48, 0x4c};
-static unsigned char cpu_freq_config_xtal20M[]= {0x32, 0x37, 0x3C, 0x41, 0x46, 0x4B, 0x50, 0x55, 0x5A, 0x5F};
-static char *clk_src_name[]={"xtal(20/25MHz)","armpll(500~950MHz)","pll1(540MHz)","pll2(500MHz)"};
+/*
+ * SYSPLL PCW values, index == enum e_cpu_freq.
+ *
+ * freq = pcw * xtal / 2  (the non-secure clk-en7523 driver derives the value
+ * with the same formula: pcw = freq * 2 / xtal), so
+ *   25MHz xtal: pcw = freq * 2 / 25  ->  500MHz = 0x28, 950MHz = 0x4c, 1.0GHz = 0x50 ...
+ *   20MHz xtal: pcw = freq * 2 / 20  ->  500MHz = 0x32, 950MHz = 0x5f, 1.0GHz = 0x64 ...
+ * The tables must cover every index the non-secure world may request, i.e.
+ * 500..1200MHz (index 0..14) - the same range the vendor BL31 offers (its
+ * armpll_clk_MHz[]/pcw[]/posdiv[] are 15 entries long, 500..1200MHz).  A
+ * shorter table made the kernel's 1.0GHz request (EN7562CT, index 10) fail
+ * with "ERROR: invalid cpuFreq:10 (valid range: 0~9)" on every OPP update.
+ * Note the 7-bit PCW field caps the 20MHz xtal at 1250MHz, which is why the
+ * overclocking indices (1250MHz and up) are not offered here.
+ */
+static unsigned char cpu_freq_config_xtal25M[]= {0x28, 0x2c, 0x30, 0x34, 0x38, 0x3c, 0x40, 0x44, 0x48, 0x4c,
+                                                 0x50, 0x54, 0x58, 0x5c, 0x60};
+static unsigned char cpu_freq_config_xtal20M[]= {0x32, 0x37, 0x3C, 0x41, 0x46, 0x4B, 0x50, 0x55, 0x5A, 0x5F,
+                                                 0x64, 0x69, 0x6e, 0x73, 0x78};
+static char *clk_src_name[]={"xtal(20/25MHz)","armpll(500~1200MHz)","pll1(540MHz)","pll2(500MHz)"};
 #endif
 //static unsigned int  voltage_config[]         ={ 115,  115,  115,  115,  115,  115,  125,  125,  125,  125};	//YMC mark for new AVS FW
 static unsigned int  armpll_clk_MHz[]         = {  500,  550,  600,  650,  700,  750,  800,  850,  900,  950,
@@ -116,10 +133,11 @@ static unsigned int clk_divider_config[]={0x0, 0xa, 0xb, 0x1d};
 /*
  * Number of OPP entries that can really be programmed into the ARM PLL.
  *
- * Note: e_cpu_freq also defines cpu_freq_1000M on EN7523, but the EN7523
- * SYSPLL PCW tables only cover up to 950MHz. Always derive the limit from
- * the real table size, so an out-of-range index coming from the non-secure
- * world (AVS_OP_FREQ_DYN_ADJ) can never index past the tables.
+ * Always derive the limit from the real table size, so an out-of-range index
+ * coming from the non-secure world (AVS_OP_FREQ_DYN_ADJ) can never index past
+ * the tables.  It must stay equal to the number of enum e_cpu_freq values the
+ * platform defines (cpu_freq_last), otherwise valid requests coming from
+ * airoha-cpufreq (e.g. 1.0GHz == index 10 on EN7562CT) get rejected.
  */
 static unsigned int cpu_freq_table_len(void)
 {
