@@ -76,8 +76,15 @@ int image_decompress(struct image_info *info)
 	work_base = work_buf_base;
 	work_size = work_buf_size;
 #else
-	work_base = compressed_image_base + compressed_image_size;
-	work_size = decompressor_buf_size - compressed_image_size;
+	/* Keep the work buffer 8-byte aligned. The LZMA probability table is an
+	 * array of UInt16 allocated from this buffer; an unaligned (odd) base
+	 * faults on Device-mapped DRAM (AArch64 alignment fault) and also makes
+	 * every prob-table access misaligned. */
+	work_base = (compressed_image_base + compressed_image_size + 7UL) & ~(uintptr_t)7UL;
+	if (work_base >= decompressor_buf_base + decompressor_buf_size)
+		work_size = 0;
+	else
+		work_size = (decompressor_buf_base + decompressor_buf_size) - work_base;
 #endif
 
 	ret = decompressor(&compressed_image_base, compressed_image_size,

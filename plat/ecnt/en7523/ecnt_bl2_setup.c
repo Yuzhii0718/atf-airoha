@@ -265,6 +265,11 @@ void bl2_el3_plat_arch_setup(void)
 	generic_delay_timer_init();
 	ecnt_system_init(&dram_size);
 
+	NOTICE("BL2: dram_size=0x%llx (%llu MB) DRAM map=[0x%lx,0x%lx)\n",
+		(unsigned long long)dram_size, (unsigned long long)(dram_size >> 20),
+		(unsigned long)EN7523_MEM_BASE,
+		(unsigned long)(EN7523_MEM_BASE + dram_size));
+
 #ifdef CPU_BUS_BL2_TEST
     tests_on_l2c_sram();
 #endif

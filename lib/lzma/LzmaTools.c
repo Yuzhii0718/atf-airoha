@@ -153,6 +153,9 @@ int lzmaBuffToBuffDecompress(uintptr_t *inStream, size_t length, uintptr_t *outS
 	g_Alloc.Alloc = SzAlloc;
 	g_Alloc.Free = SzFree;
 
+	LZMA_DBG_NOTICE("LZMA DBG: >> LzmaDecode dst=0x%lx work=0x%lx worklen=0x%zx outSize=0x%zx\n",
+			(unsigned long)*outStream, (unsigned long)work_buf, work_len, outSize);
+
 	res = LzmaDecode((Byte *) *outStream, &outProcessed,
 			 ((Byte *) *inStream) + LZMA_DATA_OFFSET, &compressedSize,
 			 ((Byte *) *inStream) , LZMA_PROPS_SIZE, LZMA_FINISH_END, &state, &g_Alloc);
