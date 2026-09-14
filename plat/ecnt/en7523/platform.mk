@@ -937,6 +937,21 @@ ERRATA_A53_855873		:=	1
 PROGRAMMABLE_RESET_ADDRESS	:=	1
 ENABLE_SVE_FOR_NS			:=	0
 
+# The non-secure world of the 32-bit parts (en7523 / en7552: 32-bit U-Boot and
+# kernel running at EL1) does not use EL2, so BL31 has to initialise the EL2
+# registers itself before entering it.  Upstream defaults INIT_UNUSED_NS_EL2 to
+# 0, which leaves them at their architecturally-unknown reset values; in
+# particular CNTVOFF_EL2 then differs per CPU, so the CPUs disagree about the
+# virtual counter (visible as a huge offset in the Linux boot log).  The kernel
+# time base gets corrupted and every driver that polls with a timeout hangs.
+# TF-A <= 2.3 and the vendor BL31 do this unconditionally - their
+# cm_prepare_el3_exit() programs CNTVOFF_EL2/HSTR_EL2/CPTR_EL2/CNTHCTL_EL2 -
+# and it is required here for PCIe/UBI/USB to come up.  The 64-bit parts manage
+# EL2 themselves (HCR_EL2.HCE is set), so leave their behaviour untouched.
+ifneq ($(TCSUPPORT_UBOOT_64BIT),1)
+INIT_UNUSED_NS_EL2		:=	1
+endif
+
 ECNT_SIP_KERNEL_BOOT_ENABLE := 1
 $(eval $(call add_define,ECNT_SIP_KERNEL_BOOT_ENABLE))
 
