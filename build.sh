@@ -7,8 +7,10 @@
 #
 #   an7581 / an7583 : BL2 (aarch32) + BL31 built from source (aarch64).
 #   an7552 : BL2 (aarch32) + BL31 built from source (aarch32).
-#   en7523:                   AArch32 build only, BL1/BL31 are taken from the
-#                             prebuilt blobs in plat/ecnt/blobs/en7523/.
+#   en7523: BL2 (aarch32) + BL31 built from source (aarch64, EFUSE_DISABLE).
+#           BL1 is still packed from plat/ecnt/blobs/en7523/bl1.bin.
+#           Set BL31_MODE=blob to keep using the prebuilt vendor v2.1 BL31
+#           (plat/ecnt/blobs/en7523/bl31.lzma) instead of building it.
 #
 # Feature switches (UBI/GPT FIP storage, BL31 FIP offset override, SPI-NAND
 # ECC DMA reads, OP-TEE) mirror the per-SOC scripts build-an7581.sh /
@@ -49,8 +51,11 @@ case "${SOC}" in
 esac
 
 # an7581 / an7583 / an7552 build BL31 from source (aarch64) and use the eMMC /
-# GPT based FIP storage.  en7523 is built in AArch32 mode only: its BL1/BL31
-# come from the prebuilt blobs under plat/ecnt/blobs/en7523/, which is the way
+# GPT based FIP storage.  en7523 builds BL31 from source as well (AArch64, the
+# only BL31 flavour TF-A supports) but with EFUSE_DISABLE, because the EN7523
+# eFuse driver is only shipped as closed prebuilt objects for aarch32 BL2.
+# BL1 - and optionally BL31 itself (BL31_MODE=blob) - still come from the
+# prebuilt blobs under plat/ecnt/blobs/en7523/, which is the way
 # scripts/build-en7523.sh does it.
 case "${SOC}" in
     an7552)
@@ -61,7 +66,7 @@ case "${SOC}" in
         SOC_CPU_DEFS=""
         ;;
     en7523)
-        SOC_BL31_MODE="blob"
+        SOC_BL31_MODE="${BL31_MODE:-src}"
         SOC_EMMC_FLAG=""
         SOC_GPT_FLAG=""
         SOC_UBOOT64_FLAG=""
@@ -356,33 +361,51 @@ pack_bl2() {
 #------------------------------------------------------------------------------
 # Build BL2 3 stages (BL21 -> BL22 -> BL23)
 #------------------------------------------------------------------------------
-# The 3 BL2 stages share a single build directory and only differ by the
-# IMAGE_BL2x define.  `make clean` can silently fail (e.g. a bulk-delete
+# The BL2 stages and BL31 share a single build directory and only differ by the
+# IMAGE_BL2x define / ARCH.  `make clean` can silently fail (e.g. a bulk-delete
 # guard refuses to remove the object tree), in which case the next stage is
-# linked against the previous stage's objects and produces a truncated
-# image.  Drop the object tree up-front so every stage starts from scratch.
+# linked against the previous stage's objects (or against libs built for the
+# other architecture) and produces a truncated / unusable image.  Drop the
+# object tree up-front so every stage starts from scratch.
 # $(1) = output file of the stage about to be built (removed so a failed
-# build can never leave the previous stage's artifact behind)
-clean_bl2_tree() {
+#        build can never leave the previous stage's artifact behind)
+# $(2) = make flags of the stage (used for `make clean`)
+clean_atf_tree() {
     local out="$1"
+    local flags="$2"
     local tree="${ATF_DIR}/build/${PLAT}/release"
+    local attempt=0
 
     rm -f  "${ATF_DIR}/${out}" 2>/dev/null || true
-    make ${COMMON_BL2_FLAGS} clean >/dev/null 2>&1 || true
-    # `make clean` can fail silently (bulk delete refused) and it re-creates
-    # the build directory, so drop the object tree afterwards and verify.
-    # Fall back to renaming the tree for environments where the bulk delete of
-    # hundreds of objects is refused.
-    rm -rf "${tree}" "${ATF_DIR}/build/${PLAT}/debug" 2>/dev/null || true
-    if [ -d "${tree}" ]; then
-        mv "${tree}" "${tree}.stale.$$" 2>/dev/null || true
-    fi
+    make ${flags} clean >/dev/null 2>&1 || true
+
+    # `make clean` can fail silently (bulk delete refused) and it re-creates the
+    # build directory, so drop the object tree afterwards and verify.  The bulk
+    # delete is refused intermittently in some sandboxes, hence the retries, and
+    # the tree is renamed aside as a fallback (it only has to disappear from
+    # this path, the leftover can be cleaned up later).
+    while [ -d "${tree}" ] && [ ${attempt} -lt 5 ]; do
+        rm -rf "${tree}" 2>/dev/null || true
+        if [ -d "${tree}" ]; then
+            mv "${tree}" "${tree}.stale.$$" 2>/dev/null || true
+        fi
+        attempt=$((attempt + 1))
+        if [ -d "${tree}" ]; then
+            sleep 1
+        fi
+    done
+    rm -rf "${ATF_DIR}/build/${PLAT}/debug" 2>/dev/null || true
 
     if [ -d "${tree}" ]; then
-        error "Cannot remove the BL2 object tree: ${tree}"
+        error "Cannot remove the object tree: ${tree}"
         error "The next stage would be linked against the previous stage's objects."
         exit 1
     fi
+}
+
+# $(1) = output file of the BL2 stage about to be built
+clean_bl2_tree() {
+    clean_atf_tree "$1" "${COMMON_BL2_FLAGS}"
 }
 
 build_bl2() {
@@ -435,13 +458,28 @@ build_bl2() {
 }
 
 #------------------------------------------------------------------------------
-# Pack prebuilt BL1/BL31 blobs (en7523: AArch32 build only)
+# Pack the prebuilt BL1 blob (BootROM stage, not part of this build)
+#------------------------------------------------------------------------------
+pack_bl1_blob() {
+    local BLOB_DIR="${ATF_DIR}/plat/ecnt/blobs/${SOC}"
+    local BL1_BLOB="${BLOB_DIR}/bl1.bin"
+
+    mkdir -p "${OUTPUT_DIR}"
+    if [ -f "${BL1_BLOB}" ]; then
+        cp "${BL1_BLOB}" "${OUTPUT_DIR}/${SOC}-bl1.bin"
+        info "${SOC}-bl1.bin: $(stat -c%s ${OUTPUT_DIR}/${SOC}-bl1.bin) bytes"
+    else
+        warn "${SOC}-bl1.bin not found, skipped: ${BL1_BLOB}"
+    fi
+}
+
+#------------------------------------------------------------------------------
+# Pack prebuilt BL1/BL31 blobs (BL31_MODE=blob)
 #------------------------------------------------------------------------------
 pack_bl31_blobs() {
     step "Pack prebuilt BL1/BL31 blobs [${SOC_UPPER}]"
 
     local BLOB_DIR="${ATF_DIR}/plat/ecnt/blobs/${SOC}"
-    local BL1_BLOB="${BLOB_DIR}/bl1.bin"
     local BL31_BLOB="${BLOB_DIR}/bl31.lzma"
 
     mkdir -p "${OUTPUT_DIR}"
@@ -451,31 +489,52 @@ pack_bl31_blobs() {
         exit 1
     fi
 
-    if [ -f "${BL1_BLOB}" ]; then
-        cp "${BL1_BLOB}" "${OUTPUT_DIR}/${SOC}-bl1.bin"
-        info "${SOC}-bl1.bin: $(stat -c%s ${OUTPUT_DIR}/${SOC}-bl1.bin) bytes"
-    else
-        warn "${SOC}-bl1.bin not found, skipped: ${BL1_BLOB}"
-    fi
+    pack_bl1_blob
 
+    cp "${BL31_BLOB}" "${OUTPUT_DIR}/${SOC}-bl31.lzma"
+    # compatibility: this flow has always emitted an unsuffixed bl31.lzma too
     cp "${BL31_BLOB}" "${OUTPUT_DIR}/bl31.lzma"
-    info "BL31 blob: $(stat -c%s ${OUTPUT_DIR}/bl31.lzma) bytes"
+    info "BL31 blob: $(stat -c%s ${OUTPUT_DIR}/${SOC}-bl31.lzma) bytes"
 }
 
 #------------------------------------------------------------------------------
-# Build BL31 (aarch64) / pack BL31 blobs (en7523)
+# Build BL31 from source (aarch64) / pack the prebuilt blobs (BL31_MODE=blob)
 #------------------------------------------------------------------------------
 build_bl31() {
     step "Build BL31 [${SOC_UPPER}]"
 
-    if [ "${SOC_BL31_MODE}" = "blob" ]; then
-        pack_bl31_blobs
-        return
-    fi
+    case "${SOC_BL31_MODE}" in
+        blob)
+            pack_bl31_blobs
+            return
+            ;;
+        src)
+            ;;
+        *)
+            error "Unsupported BL31_MODE: '${SOC_BL31_MODE}' (expected src|blob)"
+            exit 1
+            ;;
+    esac
 
     cd "${ATF_DIR}"
-    make ${COMMON_BL31_FLAGS} clean
-    make -j$(nproc) ${COMMON_BL31_FLAGS} ${OPTEE_BL31_OPT} bl31
+
+    # EN7523: the eFuse driver is closed source and only shipped as aarch32
+    # objects, so BL31 is built with the in-tree EFUSE_DISABLE configuration:
+    # efuse_init() is not called and the eFuse SMC handler answers
+    # "not supported" (see ecnt_plat_common.c) instead of failing to link.
+    local BL31_MAKE_VARS=""
+    local BL31_MAKE_ENV=()
+    if [ "${SOC}" = "en7523" ]; then
+        BL31_MAKE_VARS="EFUSE_DISABLE=1"
+        BL31_MAKE_ENV=(env "BSP_CFLAGS=${BSP_CFLAGS} -DEFUSE_DISABLE")
+    fi
+
+    # BL2 and BL31 share build/${PLAT}/release: always start from an empty tree,
+    # otherwise the BL31 link can pick up the aarch32 libc/libmbedtls built for BL2.
+    clean_atf_tree "build/${PLAT}/release/bl31.bin" "${COMMON_BL31_FLAGS}"
+
+    "${BL31_MAKE_ENV[@]}" make -j$(nproc) ${COMMON_BL31_FLAGS} \
+        ${BL31_MAKE_VARS} ${OPTEE_BL31_OPT} bl31
 
     local BL31_BIN="build/${PLAT}/release/bl31.bin"
     if [ ! -f "${BL31_BIN}" ]; then
@@ -490,6 +549,13 @@ build_bl31() {
     # lzma compression
     ${SYSTEM_LZMA} -z -c "${BL31_BIN}" > "${OUTPUT_DIR}/${SOC}-bl31.lzma"
     info "BL31 lzma: $(stat -c%s ${OUTPUT_DIR}/${SOC}-bl31.lzma) bytes"
+
+    # en7523 keeps its prebuilt BL1 and, for the pre-existing flashing flow,
+    # an unsuffixed copy of the freshly built bl31.lzma.
+    if [ "${SOC}" = "en7523" ]; then
+        pack_bl1_blob
+        cp "${OUTPUT_DIR}/${SOC}-bl31.lzma" "${OUTPUT_DIR}/bl31.lzma"
+    fi
 }
 
 #------------------------------------------------------------------------------
@@ -505,7 +571,7 @@ print_summary() {
     echo ""
 
     local f size
-    for f in "${SOC}-bl2.bin" "${SOC}-bl1.bin" "${SOC}-bl31.lzma" bl31.bin bl21.bin bl22.lzma bl23.lzma; do
+    for f in "${SOC}-bl2.bin" "${SOC}-bl1.bin" "${SOC}-bl31.lzma" bl31.lzma bl31.bin bl21.bin bl22.lzma bl23.lzma; do
         if [ -f "${OUTPUT_DIR}/${f}" ]; then
             size=$(stat -c%s "${OUTPUT_DIR}/${f}")
             printf "    %-30s  %10s bytes\n" "$f" "$size"
