@@ -260,9 +260,11 @@ check_environment() {
     chmod +x "${LZMA_WRAPPER_DIR}/lzma" 2>/dev/null || true
 
     # --- spi_nand_flash_table ---
-    if [ ! -f "${SPI_NAND_FLASH_TABLE}" ]; then
-        build_spi_nand_flash_table
-    fi
+    # Always rebuild the host tool. It hard-codes the flash table into itself at
+    # compile time, so a stale cached binary would embed an outdated table into
+    # bl2.bin (e.g. a newly added NAND ID never taking effect). Rebuilding for
+    # every target (bl1/bl2/bl31/all) keeps the embedded table in sync.
+    build_spi_nand_flash_table
 
     # --- pack script ---
     chmod +x "${PACK_SCRIPT}" 2>/dev/null || true
@@ -279,6 +281,9 @@ build_spi_nand_flash_table() {
     step "Compile spi_nand_flash_table"
 
     mkdir -p "$(dirname "${SPI_NAND_FLASH_TABLE}")"
+
+    # Clean any cached binary first, then rebuild from the current C source
+    rm -f "${SPI_NAND_FLASH_TABLE}"
 
     local SRC="${ATF_DIR}/plat/ecnt/common/drivers/flash/spi_nand_flash_table.c"
     local INC="${ATF_DIR}/plat/ecnt/en7523/include"
