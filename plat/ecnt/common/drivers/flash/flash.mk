@@ -25,23 +25,19 @@ FLASH_SRCS	+= $(addprefix plat/ecnt/common/drivers/flash/,	\
 				spi_ecc.c						\
 				spi_nfi.c)
 
+# Parallel (raw) NAND backend.  Unlike the SPI-NAND driver it is optional and
+# only pulled in for the SoCs whose boot strap can select the parallel NAND
+# interface.  The sources live in tree next to the other flash drivers, so the
+# external KERNEL_EXT_SPI_NAND_DIR / drivers/mtd/chips/ layouts are gone.
 ifneq ($(TCSUPPORT_PARALLEL_NAND),)
-ifeq ($(TCSUPPORT_ATF_RELEASE),)
-FLASH_SRCS	+=	$(KERNEL_EXT_SPI_NAND_DIR)/parallel_nand_flash.c	\
-				$(KERNEL_EXT_SPI_NAND_DIR)/parallel_nand_flash_table.c
-else
-FLASH_SRCS	+=	$(addprefix drivers/mtd/chips/,	\
+FLASH_SRCS	+=	$(addprefix plat/ecnt/common/drivers/flash/,	\
 				parallel_nand_flash.c			\
 				parallel_nand_flash_table.c)
 endif
-endif
 
-ifeq ($(TCSUPPORT_ATF_RELEASE),)
-FLASH_REBUILD_SRCS += $(KERNEL_EXT_SPI_NAND_DIR)/spi_nand_flash_table.c
-else
-FLASH_REBUILD_SRCS +=	$(addprefix drivers/mtd/chips/,	\
-						spi_nand_flash_table.c)
-endif
+# spi_nand_flash_table.c is also compiled standalone as the host side flash
+# table generator (see build.sh), hence it is tracked separately.
+FLASH_REBUILD_SRCS	+=	plat/ecnt/common/drivers/flash/spi_nand_flash_table.c
 
 #eMMC
 ifneq ($(TCSUPPORT_EMMC),)
