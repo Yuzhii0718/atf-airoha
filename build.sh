@@ -2,8 +2,10 @@
 #===============================================================================
 # build.sh - Universal SOC (an7581 / an7583 / an7552 / en7523) BL2/BL31 build
 #
-# Usage: SOC=<an7581|an7583|an7552|en7523> [OPTEE=yes|no] ./build.sh [bl2|bl31|all]
+# Usage: SOC=<an7581|an7583|an7552|en7523> [OPTEE=yes|no] [PARALLEL_NAND=yes|no] \
+#                                    ./build.sh [bl2|bl31|all]
 #   OPTEE=yes enables OP-TEE (BL32) support, default: no
+#   PARALLEL_NAND=yes adds the parallel (raw) NAND backend to BL2, default: no
 #
 #   an7581 / an7583 : BL2 (aarch32) + BL31 built from source (aarch64).
 #   an7552 : BL2 (aarch32) + BL31 built from source (aarch32).
@@ -13,8 +15,9 @@
 #           No prebuilt BL1/BL31 blobs are used anymore.
 #
 # Feature switches (UBI/GPT FIP storage, BL31 FIP offset override, SPI-NAND
-# ECC DMA reads, OP-TEE) mirror the per-SOC scripts build-an7581.sh /
-# build-an7583.sh / build-an7552.sh / build-en7523.sh under scripts/.
+# ECC DMA reads, parallel NAND, OP-TEE) mirror the per-SOC scripts
+# build-an7581.sh / build-an7583.sh / build-an7552.sh / build-en7523.sh under
+# scripts/.
 #===============================================================================
 
 set -e
@@ -26,7 +29,7 @@ SOC="${SOC,,}" # Transform to lowercase
 
 if [ -z "${SOC}" ]; then
     echo -e "\033[0;31m[ERROR]\033[0m not specified SOC environment variable."
-    echo "Usage: SOC=<an7581|an7583|an7552|en7523> [OPTEE=yes|no] $0 [bl2|bl31|all]"
+    echo "Usage: SOC=<an7581|an7583|an7552|en7523> [OPTEE=yes|no] [PARALLEL_NAND=yes|no] $0 [bl2|bl31|all]"
     echo "Example: SOC=an7583 $0 all"
     exit 1
 fi
@@ -95,6 +98,13 @@ SOC_UPPER="${SOC^^}"
 #------------------------------------------------------------------------------
 OPTEE="${OPTEE:-no}"    # OPTEE=yes -> build BL2/BL31 with OP-TEE (BL32) support
 
+# PARALLEL_NAND=yes pulls the parallel (raw) NAND backend
+# (plat/ecnt/common/drivers/flash/parallel_nand_flash.c and its device table)
+# into BL23 instead of the SPI-NAND one.  The -D is applied to the BL2 build
+# only (see build_bl2) because the flash drivers are BL2 sources; the make
+# variable makes flash.mk pick up the extra sources.
+PARALLEL_NAND="${PARALLEL_NAND:-no}"
+
 BSP_CFLAGS="\
     -fsigned-char \
     -Wno-error=date-time \
@@ -123,6 +133,16 @@ if [ "${OPTEE}" = "yes" ]; then
     BSP_CFLAGS="${BSP_CFLAGS} -DTCSUPPORT_OPTEE"
     OPTEE_BL23_OPT="TCSUPPORT_OPTEE=1"
     OPTEE_BL31_OPT="TCSUPPORT_OPTEE=1 SPD=opteed"
+fi
+
+# The parallel NAND backend is only reachable through the BL2 flash drivers, so
+# both the make variable (flash.mk source selection) and the compiler define
+# (BL23 objects) are applied to the BL2 stages only.
+PARALLEL_NAND_BL2_OPT=""    # extra make var for BL23 when parallel NAND is enabled
+PARALLEL_NAND_CFLAGS=""     # extra BSP_CFLAGS for the BL2 stages
+if [ "${PARALLEL_NAND}" = "yes" ]; then
+    PARALLEL_NAND_BL2_OPT="TCSUPPORT_PARALLEL_NAND=1"
+    PARALLEL_NAND_CFLAGS="-DTCSUPPORT_PARALLEL_NAND"
 fi
 export BSP_CFLAGS
 
@@ -285,9 +305,13 @@ build_spi_nand_flash_table() {
     local SRC="${ATF_DIR}/plat/ecnt/common/drivers/flash/spi_nand_flash_table.c"
     local INC="${ATF_DIR}/plat/ecnt/en7523/include"
 
+    # TCSUPPORT_PARALLEL_NAND adds fields to struct SPI_NAND_FLASH_INFO_T, so the
+    # generator has to be compiled with the very same defines as BL2.  Otherwise
+    # the offsets baked into flash_table.bin would not match the BL2 structure.
     gcc -O2 \
         -DFLASH_TABLE_OPEN \
         -DTCSUPPORT_BL2_OPTIMIZATION \
+        ${PARALLEL_NAND_CFLAGS} \
         -I"${INC}" \
         -o "${SPI_NAND_FLASH_TABLE}" \
         "${SRC}"
@@ -405,10 +429,16 @@ build_bl2() {
 
     cd "${ATF_DIR}"
 
+    # Optional feature defines that must not leak into the BL31 build.
+    local BL2_MAKE_ENV=()
+    if [ -n "${PARALLEL_NAND_CFLAGS}" ]; then
+        BL2_MAKE_ENV=(env "BSP_CFLAGS=${BSP_CFLAGS} ${PARALLEL_NAND_CFLAGS}")
+    fi
+
     # --- BL21: 1st stage (Not compressed) ---
     info "[1/3] Build BL21..."
     clean_bl2_tree bl21.bin
-    make -j$(nproc) ${COMMON_BL2_FLAGS} IMAGE_BL21=1 bl2
+    "${BL2_MAKE_ENV[@]}" make -j$(nproc) ${COMMON_BL2_FLAGS} ${PARALLEL_NAND_BL2_OPT} IMAGE_BL21=1 bl2
     if [ ! -f "bl21.bin" ]; then
         error "bl21.bin not generated"
         exit 1
@@ -418,7 +448,7 @@ build_bl2() {
     # --- BL22: 2nd stage (lzma) ---
     info "[2/3] Build BL22..."
     clean_bl2_tree bl22.lzma
-    make -j$(nproc) ${COMMON_BL2_FLAGS} IMAGE_BL22=1 bl2
+    "${BL2_MAKE_ENV[@]}" make -j$(nproc) ${COMMON_BL2_FLAGS} ${PARALLEL_NAND_BL2_OPT} IMAGE_BL22=1 bl2
     if [ ! -f "bl22.lzma" ]; then
         error "bl22.lzma not generated"
         exit 1
@@ -433,7 +463,7 @@ build_bl2() {
     # --- BL23: 3rd stage (lzma) ---
     info "[3/3] Build BL23..."
     clean_bl2_tree bl23.lzma
-    make -j$(nproc) ${COMMON_BL2_FLAGS} ${OPTEE_BL23_OPT} IMAGE_BL23=1 bl2
+    "${BL2_MAKE_ENV[@]}" make -j$(nproc) ${COMMON_BL2_FLAGS} ${PARALLEL_NAND_BL2_OPT} ${OPTEE_BL23_OPT} IMAGE_BL23=1 bl2
     if [ ! -f "bl23.lzma" ]; then
         error "bl23.lzma not generated"
         exit 1
@@ -571,6 +601,7 @@ main() {
     echo "  (Full ATF 2.10 + atf-airoha ECNT platform code)"
     echo "  Output: ${OUTPUT_DIR}"
     echo "  OPTEE: ${OPTEE}"
+    echo "  Parallel NAND: ${PARALLEL_NAND}"
     echo "==========================================================================="
 
     check_environment
@@ -589,6 +620,7 @@ main() {
         *)
             echo "Usage: SOC=<an7581|an7583|an7552|en7523> [OPTEE=yes|no] $0 [bl2|bl31|all]"
             echo "  OPTEE=yes - build with OP-TEE (BL32) support"
+            echo "  PARALLEL_NAND=yes - build with parallel (raw) NAND backend"
             echo "  bl2  - Only build BL2 (including BL21/BL22/BL23 + packaging)"
             echo "  bl31 - Only build BL31"
             echo "  all  - Build everything (default)"
