@@ -7,10 +7,10 @@
 #
 #   an7581 / an7583 : BL2 (aarch32) + BL31 built from source (aarch64).
 #   an7552 : BL2 (aarch32) + BL31 built from source (aarch32).
-#   en7523: BL2 (aarch32) + BL31 built from source (aarch64, EFUSE_DISABLE).
-#           BL1 is still packed from plat/ecnt/blobs/en7523/bl1.bin.
-#           Set BL31_MODE=blob to keep using the prebuilt vendor v2.1 BL31
-#           (plat/ecnt/blobs/en7523/bl31.lzma) instead of building it.
+#   en7523: BL2 (aarch32) + BL31 built from source (aarch64, EFUSE_DISABLE),
+#           and BL1 built from the open-source reimplementation under
+#           plat/ecnt/en7523/bl1/ (flat AArch32 binary, <=2KB).
+#           No prebuilt BL1/BL31 blobs are used anymore.
 #
 # Feature switches (UBI/GPT FIP storage, BL31 FIP offset override, SPI-NAND
 # ECC DMA reads, OP-TEE) mirror the per-SOC scripts build-an7581.sh /
@@ -54,26 +54,22 @@ esac
 # GPT based FIP storage.  en7523 builds BL31 from source as well (AArch64, the
 # only BL31 flavour TF-A supports) but with EFUSE_DISABLE, because the EN7523
 # eFuse driver is only shipped as closed prebuilt objects for aarch32 BL2.
-# BL1 - and optionally BL31 itself (BL31_MODE=blob) - still come from the
-# prebuilt blobs under plat/ecnt/blobs/en7523/, which is the way
-# scripts/build-en7523.sh does it.
+# en7523 BL1 is built from the open-source reimplementation under
+# plat/ecnt/en7523/bl1/; prebuilt BL1/BL31 blobs are no longer used.
 case "${SOC}" in
     an7552)
-        SOC_BL31_MODE="src"
         SOC_EMMC_FLAG=""
         SOC_GPT_FLAG=""
         SOC_UBOOT64_FLAG=""
         SOC_CPU_DEFS=""
         ;;
     en7523)
-        SOC_BL31_MODE="${BL31_MODE:-src}"
         SOC_EMMC_FLAG=""
         SOC_GPT_FLAG=""
         SOC_UBOOT64_FLAG=""
         SOC_CPU_DEFS=""
         ;;
     *)
-        SOC_BL31_MODE="src"
         SOC_EMMC_FLAG="TCSUPPORT_EMMC=1"
         SOC_GPT_FLAG="TCSUPPORT_GPT_ATF_SUPPORT=1"
         SOC_UBOOT64_FLAG="TCSUPPORT_UBOOT_64BIT=1"
@@ -233,17 +229,13 @@ check_environment() {
     fi
     info "ARM32: $(${AARCH32_CROSS}gcc --version | head -1)"
 
-    # --- AARCH64 Toolchain (only needed when BL31 is built from source) ---
-    if [ "${SOC_BL31_MODE}" = "blob" ]; then
-        info "AARCH64 toolchain not required (${SOC}: BL31 comes from the prebuilt blob)"
-    else
-        if ! command -v aarch64-linux-gnu-gcc &>/dev/null; then
-            error "AARCH64 Toolchain not found: aarch64-linux-gnu-gcc"
-            error "Please install: sudo apt install -y gcc-aarch64-linux-gnu"
-            exit 1
-        fi
-        info "AARCH64: $(aarch64-linux-gnu-gcc --version | head -1)"
+    # --- AARCH64 Toolchain (BL31 is always built from source) ---
+    if ! command -v aarch64-linux-gnu-gcc &>/dev/null; then
+        error "AARCH64 Toolchain not found: aarch64-linux-gnu-gcc"
+        error "Please install: sudo apt install -y gcc-aarch64-linux-gnu"
+        exit 1
     fi
+    info "AARCH64: $(aarch64-linux-gnu-gcc --version | head -1)"
 
     # --- mbedtls ---
     if [ ! -d "${MBEDTLS_DIR}" ]; then
@@ -458,63 +450,48 @@ build_bl2() {
 }
 
 #------------------------------------------------------------------------------
-# Pack the prebuilt BL1 blob (BootROM stage, not part of this build)
+# Build the open-source BL1
+#
+# A clean-room reimplementation of the vendor bl1.bin, kept under
+# plat/ecnt/en7523/bl1/. It is a standalone flat binary (AArch32/ARMv7-A,
+# linked at 0x0, <=2KB) so it is built directly with the aarch32 toolchain
+# rather than through the ATF top-level Makefile. The prebuilt vendor blob is
+# no longer used.
 #------------------------------------------------------------------------------
-pack_bl1_blob() {
-    local BLOB_DIR="${ATF_DIR}/plat/ecnt/blobs/${SOC}"
-    local BL1_BLOB="${BLOB_DIR}/bl1.bin"
+build_bl1() {
+    step "Build BL1 (open-source) [${SOC_UPPER}]"
 
-    mkdir -p "${OUTPUT_DIR}"
-    if [ -f "${BL1_BLOB}" ]; then
-        cp "${BL1_BLOB}" "${OUTPUT_DIR}/${SOC}-bl1.bin"
-        info "${SOC}-bl1.bin: $(stat -c%s ${OUTPUT_DIR}/${SOC}-bl1.bin) bytes"
-    else
-        warn "${SOC}-bl1.bin not found, skipped: ${BL1_BLOB}"
-    fi
-}
+    local BL1_DIR="${ATF_DIR}/plat/ecnt/en7523/bl1"
 
-#------------------------------------------------------------------------------
-# Pack prebuilt BL1/BL31 blobs (BL31_MODE=blob)
-#------------------------------------------------------------------------------
-pack_bl31_blobs() {
-    step "Pack prebuilt BL1/BL31 blobs [${SOC_UPPER}]"
-
-    local BLOB_DIR="${ATF_DIR}/plat/ecnt/blobs/${SOC}"
-    local BL31_BLOB="${BLOB_DIR}/bl31.lzma"
-
-    mkdir -p "${OUTPUT_DIR}"
-    if [ ! -f "${BL31_BLOB}" ]; then
-        error "BL31 prebuilt blob not found: ${BL31_BLOB}"
-        error "Please obtain ${SOC} bl1.bin / bl31.lzma from the ${SOC} SDK and put them under ${BLOB_DIR}/"
+    if [ ! -d "${BL1_DIR}" ]; then
+        error "open-source BL1 source not found: ${BL1_DIR}"
         exit 1
     fi
 
-    pack_bl1_blob
+    # The dedicated build.sh aarch32 toolchain is arm-none-eabi- (bundled);
+    # fall back to the distro arm-linux-gnueabihf- when it is not present.
+    local BL1_CROSS="${AARCH32_CROSS}"
+    if [ ! -x "${BL1_CROSS}gcc" ]; then
+        BL1_CROSS="arm-linux-gnueabihf-"
+    fi
+    info "BL1 cross toolchain: ${BL1_CROSS}"
 
-    cp "${BL31_BLOB}" "${OUTPUT_DIR}/${SOC}-bl31.lzma"
-    # compatibility: this flow has always emitted an unsuffixed bl31.lzma too
-    cp "${BL31_BLOB}" "${OUTPUT_DIR}/bl31.lzma"
-    info "BL31 blob: $(stat -c%s ${OUTPUT_DIR}/${SOC}-bl31.lzma) bytes"
+    make -C "${BL1_DIR}" CROSS_COMPILE="${BL1_CROSS}" clean >/dev/null 2>&1 || true
+    if ! make -C "${BL1_DIR}" CROSS_COMPILE="${BL1_CROSS}"; then
+        error "open-source BL1 build failed"
+        exit 1
+    fi
+
+    mkdir -p "${OUTPUT_DIR}"
+    cp "${BL1_DIR}/bl1.bin" "${OUTPUT_DIR}/${SOC}-bl1.bin"
+    info "${SOC}-bl1.bin (source): $(stat -c%s ${OUTPUT_DIR}/${SOC}-bl1.bin) bytes"
 }
 
 #------------------------------------------------------------------------------
-# Build BL31 from source (aarch64) / pack the prebuilt blobs (BL31_MODE=blob)
+# Build BL31 from source (aarch64)
 #------------------------------------------------------------------------------
 build_bl31() {
     step "Build BL31 [${SOC_UPPER}]"
-
-    case "${SOC_BL31_MODE}" in
-        blob)
-            pack_bl31_blobs
-            return
-            ;;
-        src)
-            ;;
-        *)
-            error "Unsupported BL31_MODE: '${SOC_BL31_MODE}' (expected src|blob)"
-            exit 1
-            ;;
-    esac
 
     cd "${ATF_DIR}"
 
@@ -550,10 +527,10 @@ build_bl31() {
     ${SYSTEM_LZMA} -z -c "${BL31_BIN}" > "${OUTPUT_DIR}/${SOC}-bl31.lzma"
     info "BL31 lzma: $(stat -c%s ${OUTPUT_DIR}/${SOC}-bl31.lzma) bytes"
 
-    # en7523 keeps its prebuilt BL1 and, for the pre-existing flashing flow,
-    # an unsuffixed copy of the freshly built bl31.lzma.
+    # en7523 also ships the open-source BL1 and, for the pre-existing flashing
+    # flow, an unsuffixed copy of the freshly built bl31.lzma.
     if [ "${SOC}" = "en7523" ]; then
-        pack_bl1_blob
+        build_bl1
         cp "${OUTPUT_DIR}/${SOC}-bl31.lzma" "${OUTPUT_DIR}/bl31.lzma"
     fi
 }
