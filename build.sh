@@ -354,15 +354,12 @@ pack_bl2() {
     cp "${ATF_DIR}/bl23.lzma" "${PACK_TMP}/"
 
     # Generate SPI NAND Flash Table (Output: flash_table.bin)
+    # The generator is a standalone host tool compiled with -DFLASH_TABLE_OPEN
+    # (see build_spi_nand_flash_table); its main() takes no arguments and the
+    # flash geometry is hard-coded at compile time, so no command line flags
+    # are passed here.
     info "Generate Flash Table..."
-    "${SPI_NAND_FLASH_TABLE}" 2 \
-        -partlen=4194304 \
-        -tablesize=131072 \
-        -offset=131072 \
-        -blocksize=131072 \
-        -sectorsize=2048 \
-        -page_size=2048 \
-        -oobsize=64
+    "${SPI_NAND_FLASH_TABLE}"
     if [ ! -f "flash_table.bin" ]; then
         error "Flash Table generate failed: flash_table.bin not found"
         exit 1
