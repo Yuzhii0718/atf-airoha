@@ -32,12 +32,29 @@ wget -O dl/mbedtls-72718dd87e087215ce9155a826ee5a66cfbe9631.zip https://github.c
 ## Build
 
 ```bash
-SOC=<an7581|an7583> ./build.sh       # build all
-SOC=<an7581|an7583> ./build.sh bl2   # build bl2
-SOC=<an7581|an7583> ./build.sh bl31  # build bl31
+SOC=<an7581|an7583|an7552|en7523> ./build.sh             # build all
+SOC=<en7523>                      ./build.sh bl1         # build open-source BL1 (en7523 only)
+SOC=<an7581|an7583|an7552|en7523> ./build.sh bl2         # build bl2
+SOC=<an7581|an7583|an7552|en7523> ./build.sh bl31        # build bl31
+SOC=<an7581|an7583|an7552|en7523> ./build.sh --help      # show usage
 ```
 
+> [!NOTE]
+> Build targets:
+>
+> - **an7581 / an7583** — BL2 (AArch32) + BL31 (AArch64), built from source.
+> - **an7552** — BL2 (AArch32) + BL31 (AArch64), built from source.
+> - **en7523** — BL2 (AArch32) + BL31 (AArch64, with `EFUSE_DISABLE`) + open-source BL1
+>   (built from the reimplementation under `plat/ecnt/en7523/bl1/`, a flat AArch32
+>   binary ≤2KB). No prebuilt BL1/BL31 blobs are used. The standalone `bl1` target
+>   is only valid for en7523.
+
 ## Pipeline
+
+### BL1 (open-source, en7523 only)
+1. Built directly with the AArch32 toolchain (`arm-none-eabi-`, falls back to `arm-linux-gnueabihf-`)
+2. Standalone flat binary linked at `0x0`, ≤2KB (asserted by `bl1.ld`)
+3. Output: `en7523-bl1.bin`
 
 ### BL2 (3-stage and packaging)
 1. **BL21** — Stage 1 loader (BL2 raw binary, uncompressed)

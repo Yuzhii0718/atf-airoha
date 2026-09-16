@@ -8,7 +8,7 @@
 #   PARALLEL_NAND=yes adds the parallel (raw) NAND backend to BL2, default: no
 #
 #   an7581 / an7583 : BL2 (aarch32) + BL31 built from source (aarch64).
-#   an7552 : BL2 (aarch32) + BL31 built from source (aarch32).
+#   an7552 : BL2 (aarch32) + BL31 built from source (aarch64).
 #   en7523: BL2 (aarch32) + BL31 built from source (aarch64, EFUSE_DISABLE),
 #           and BL1 built from the open-source reimplementation under
 #           plat/ecnt/en7523/bl1/ (flat AArch32 binary, <=2KB).
