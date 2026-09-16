@@ -3,7 +3,7 @@
 # build.sh - Universal SOC (an7581 / an7583 / an7552 / en7523) BL2/BL31 build
 #
 # Usage: SOC=<an7581|an7583|an7552|en7523> [OPTEE=yes|no] [PARALLEL_NAND=yes|no] \
-#                                    ./build.sh [bl2|bl31|all]
+#                                    ./build.sh [bl1|bl2|bl31|all]
 #   OPTEE=yes enables OP-TEE (BL32) support, default: no
 #   PARALLEL_NAND=yes adds the parallel (raw) NAND backend to BL2, default: no
 #
@@ -43,7 +43,7 @@ SOC="${SOC,,}" # Transform to lowercase
 
 if [ -z "${SOC}" ]; then
     echo -e "\033[0;31m[ERROR]\033[0m not specified SOC environment variable."
-    echo "Usage: SOC=<an7581|an7583|an7552|en7523> [OPTEE=yes|no] [PARALLEL_NAND=yes|no] $0 [bl2|bl31|all]"
+    echo "Usage: SOC=<an7581|an7583|an7552|en7523> [OPTEE=yes|no] [PARALLEL_NAND=yes|no] $0 [bl1|bl2|bl31|all]"
     echo "Example: SOC=an7583 $0 all"
     echo "More info: $0 --help"
     exit 1
@@ -506,6 +506,13 @@ build_bl2() {
 build_bl1() {
     step "Build BL1 (open-source) [${SOC_UPPER}]"
 
+    # The open-source BL1 reimplementation only exists for en7523; other SOCs
+    # still rely on the vendor boot ROM / prebuilt chain and have no BL1 target.
+    if [ "${SOC}" != "en7523" ]; then
+        error "bl1 is only supported for SOC=en7523 (current SOC: ${SOC})"
+        exit 1
+    fi
+
     local BL1_DIR="${ATF_DIR}/plat/ecnt/en7523/bl1"
 
     if [ ! -d "${BL1_DIR}" ]; then
@@ -622,6 +629,9 @@ main() {
     check_environment
 
     case "${TARGET}" in
+        bl1)
+            build_bl1
+            ;;
         bl2)
             build_bl2
             ;;
@@ -633,9 +643,10 @@ main() {
             build_bl31
             ;;
         *)
-            echo "Usage: SOC=<an7581|an7583|an7552|en7523> [OPTEE=yes|no] $0 [bl2|bl31|all]"
+            echo "Usage: SOC=<an7581|an7583|an7552|en7523> [OPTEE=yes|no] $0 [bl1|bl2|bl31|all]"
             echo "  OPTEE=yes - build with OP-TEE (BL32) support"
             echo "  PARALLEL_NAND=yes - build with parallel (raw) NAND backend"
+            echo "  bl1  - Only build the open-source BL1 (en7523 only)"
             echo "  bl2  - Only build BL2 (including BL21/BL22/BL23 + packaging)"
             echo "  bl31 - Only build BL31"
             echo "  all  - Build everything (default)"
