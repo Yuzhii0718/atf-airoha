@@ -234,7 +234,9 @@ uint64_t write_scu(uint32_t r2, uint32_t r3)
 uint64_t ecnt_efuse_handler(uint32_t r1, uint32_t r2, uint32_t r3)
 {
 	int status = 0;
+#ifndef EFUSE_DISABLE
 	size_t size = 0;
+#endif
 
 	#ifdef TCSUPPORT_CPU_AN7583
 	unsigned int board_idx;
