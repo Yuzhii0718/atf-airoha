@@ -23,6 +23,20 @@
 set -e
 
 #------------------------------------------------------------------------------
+# Usage / help
+#------------------------------------------------------------------------------
+usage() {
+	sed -n '2,/^[^#]/p' "$0" | grep -E '^#( |$)' | sed 's/^# \?//'
+	exit 0
+}
+
+case "${1:-}" in
+	--help|-h|help)
+		usage
+		;;
+esac
+
+#------------------------------------------------------------------------------
 # SOC parameter check
 #------------------------------------------------------------------------------
 SOC="${SOC,,}" # Transform to lowercase
@@ -31,6 +45,7 @@ if [ -z "${SOC}" ]; then
     echo -e "\033[0;31m[ERROR]\033[0m not specified SOC environment variable."
     echo "Usage: SOC=<an7581|an7583|an7552|en7523> [OPTEE=yes|no] [PARALLEL_NAND=yes|no] $0 [bl2|bl31|all]"
     echo "Example: SOC=an7583 $0 all"
+    echo "More info: $0 --help"
     exit 1
 fi
 
