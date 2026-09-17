@@ -303,7 +303,14 @@ void bl2_plat_arch_setup(void)
 	bl2_el3_plat_arch_setup();
 }
 
-void bl2_el3_plat_prepare_exit(void)
+/*
+ * TF-A 2.15 renamed the bl2_el3_* prepare-exit hook to bl2_plat_prepare_exit()
+ * (see include/plat/common/platform.h and the weak default in
+ * plat/common/plat_bl_common.c).  Keep the platform implementation under the
+ * new name, otherwise the empty weak default is used and the AArch64 handoff
+ * below never happens.
+ */
+void bl2_plat_prepare_exit(void)
 {
 	jumparch64(BL33_BASE, 0, 0, TZRAM_BASE);
 	panic();
