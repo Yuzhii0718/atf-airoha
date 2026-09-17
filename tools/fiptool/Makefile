@@ -49,6 +49,10 @@ FIPTOOL_LDFLAGS := -L${OPENSSL_DIR}/lib -L${OPENSSL_DIR} -lcrypto
 FIPTOOL_INCLUDE_DIRS += ${OPENSSL_DIR}/include
 endif # STATIC
 
+ifneq ($(strip $(TCSUPPORT_UBOOT)),)
+  FIPTOOL_DEFINES += CONFIG_ECNT
+endif
+
 ifneq (${PLAT},)
 TF_PLATFORM_ROOT	:=	../../plat/
 include ${MAKE_HELPERS_DIRECTORY}plat_helpers.mk

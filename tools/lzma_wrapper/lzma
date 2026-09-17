@@ -1,0 +1,11 @@
+#!/bin/bash
+# lzma wrapper: Converts ATF's "lzma e input output" syntax to the system lzma syntax
+# ATF internal call: $(TOOLS_DIR)/lzma e $@ bl22.lzma
+
+if [ "$1" = "e" ]; then
+    # "lzma e input output" -> Compress input to output using LZMA
+    /usr/bin/lzma -z -c "$2" > "$3"
+else
+    # Pass through to system lzma
+    exec /usr/bin/lzma "$@"
+fi
