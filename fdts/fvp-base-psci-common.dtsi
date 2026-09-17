@@ -1,0 +1,162 @@
+// SPDX-License-Identifier: GPL-2.0 or BSD-3-Clause
+/*
+ * ARM Ltd. Fast Models
+ *
+ * Architecture Envelope Model (AEM) ARMv8-A
+ * ARMAEMv8AMPCT
+ *
+ * RTSM_VE_AEMv8A.lisa
+ *
+ * Copyright (c) 2017-2025, ARM Limited and Contributors. All rights reserved.
+ */
+
+#include "rtsm_ve-motherboard.dtsi"
+
+/ {
+	model = "FVP Base";
+	compatible = "arm,fvp-base", "arm,vexpress";
+	interrupt-parent = <&gic>;
+	#address-cells = <2>;
+	#size-cells = <2>;
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+		bootargs = "console=ttyAMA0 earlycon=pl011,0x1c090000 root=/dev/vda ip=on";
+	};
+
+	aliases {
+		serial0 = &v2m_serial0;
+		serial1 = &v2m_serial1;
+		serial2 = &v2m_serial2;
+		serial3 = &v2m_serial3;
+	};
+
+	psci {
+		compatible = "arm,psci-1.0", "arm,psci-0.2";
+		method = "smc";
+		max-pwr-lvl = <2>;
+	};
+
+	cpus {
+		#address-cells = <2>;
+		#size-cells = <0>;
+
+		CPU_MAP
+
+		idle-states {
+			entry-method = "psci";
+
+			CPU_SLEEP_0: cpu-sleep-0 {
+				compatible = "arm,idle-state";
+				local-timer-stop;
+				arm,psci-suspend-param = <0x0010000>;
+				entry-latency-us = <40>;
+				exit-latency-us = <100>;
+				min-residency-us = <150>;
+			};
+
+			CLUSTER_SLEEP_0: cluster-sleep-0 {
+				compatible = "arm,idle-state";
+				local-timer-stop;
+				arm,psci-suspend-param = <0x1010000>;
+				entry-latency-us = <500>;
+				exit-latency-us = <1000>;
+				min-residency-us = <2500>;
+			};
+		};
+
+		CPUS
+
+		L2_0: l2-cache0 {
+			compatible = "cache";
+		};
+	};
+
+	memory@80000000 {
+		device_type = "memory";
+#if (ENABLE_RMM == 1)
+		reg = <0x00000000 0x80000000 0 0x7C000000>,
+		      <0x00000008 0x80000000 0 0x80000000>;
+#else
+		reg = <0x00000000 0x80000000 0 0x7F000000>,
+		      <0x00000008 0x80000000 0 0x80000000>;
+#endif
+	};
+
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		/* Chipselect 2,00000000 is physically at 0x18000000 */
+		vram: vram@18000000 {
+			/* 8 MB of designated video RAM */
+			compatible = "shared-dma-pool";
+			reg = <0x00000000 0x18000000 0 0x00800000>;
+			no-map;
+		};
+	};
+
+	timer {
+		compatible = "arm,armv8-timer";
+		clock-frequency = <100000000>;
+	};
+
+	timer@2a810000 {
+			compatible = "arm,armv7-timer-mem";
+			reg = <0x0 0x2a810000 0x0 0x10000>;
+			clock-frequency = <100000000>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			ranges = <0x0 0x0 0x2a810000 0x100000>;
+
+			frame@2a830000 {
+				frame-number = <1>;
+				interrupt-parent = <&gic>;
+				reg = <0x20000 0x10000>;
+			};
+	};
+
+	pmu {
+		compatible = "arm,armv8-pmuv3";
+	};
+
+	panel {
+		compatible = "arm,rtsm-display";
+		port {
+			panel_in: endpoint {
+				remote-endpoint = <&clcd_pads>;
+			};
+		};
+	};
+
+	bus@8000000 {
+		#interrupt-cells = <1>;
+		interrupt-map-mask = <0 0 63>;
+	};
+
+#if (ENABLE_RMM == 1)
+	pci: pci@40000000 {
+		#address-cells = <3>;
+		#size-cells = <2>;
+		#interrupt-cells = <1>;
+		compatible = "pci-host-ecam-generic";
+		device_type = "pci";
+		reg = <0x0 0x40000000 0x0 0x10000000>;
+		ranges = <0x2000000 0x0 0x50000000 0x0 0x50000000 0x0 0x10000000>,
+			/* First 3GB of 256GB PCIe memory region 2 */
+			 <0x2000000 0x40 0x00000000 0x40 0x00000000 0x0 0xc0000000>;
+		interrupt-map-mask = <0x0 0x0 0x0 0x7>;
+		iommu-map = <0x0 &smmu 0x0 0x10000>;
+		dma-coherent;
+	};
+
+	smmu: iommu@2b400000 {
+		compatible = "arm,smmu-v3";
+		reg = <0x0 0x2b400000 0x0 0x100000>;
+		interrupt-names = "eventq", "gerror", "priq", "cmdq-sync";
+		dma-coherent;
+		#iommu-cells = <1>;
+	};
+#endif /* ENABLE_RMM */
+};

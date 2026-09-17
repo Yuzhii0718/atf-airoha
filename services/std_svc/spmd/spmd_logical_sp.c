@@ -1,0 +1,972 @@
+/*
+ * Copyright (c) 2023-2026, Arm Limited and Contributors. All rights reserved.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+#include <assert.h>
+#include <errno.h>
+#include <string.h>
+#include "spmd_private.h"
+
+#include <common/debug.h>
+#include <common/uuid.h>
+#include <lib/el3_runtime/context_mgmt.h>
+#include <services/el3_spmd_logical_sp.h>
+#include <services/lfa_svc.h>
+#include <services/spmc_svc.h>
+#include <smccc_helpers.h>
+
+#if ENABLE_SPMD_LP
+static bool is_spmd_lp_inited;
+static bool is_spmc_inited;
+
+/*
+ * Helper function to obtain the array storing the EL3
+ * SPMD Logical Partition descriptors.
+ */
+static struct spmd_lp_desc *get_spmd_el3_lp_array(void)
+{
+	return (struct spmd_lp_desc *) SPMD_LP_DESCS_START;
+}
+
+/*******************************************************************************
+ * Validate any logical partition descriptors before we initialize.
+ * Initialization of said partitions will be taken care of during SPMD boot.
+ ******************************************************************************/
+static int el3_spmd_sp_desc_validate(struct spmd_lp_desc *lp_array)
+{
+	/* Check the array bounds are valid. */
+	assert(SPMD_LP_DESCS_END > SPMD_LP_DESCS_START);
+
+	/*
+	 * No support for SPMD logical partitions when SPMC is at EL3.
+	 */
+	assert(!is_spmc_at_el3());
+
+	/* If no SPMD logical partitions are implemented then simply bail out. */
+	if (SPMD_LP_DESCS_COUNT == 0U) {
+		return -1;
+	}
+
+	for (uint32_t index = 0U; index < SPMD_LP_DESCS_COUNT; index++) {
+		struct spmd_lp_desc *lp_desc = &lp_array[index];
+
+		/* Validate our logical partition descriptors. */
+		if (lp_desc == NULL) {
+			ERROR("Invalid SPMD Logical SP Descriptor\n");
+			return -EINVAL;
+		}
+
+		/*
+		 * Ensure the ID follows the convention to indicate it resides
+		 * in the secure world.
+		 */
+		if (!ffa_is_secure_world_id(lp_desc->sp_id)) {
+			ERROR("Invalid SPMD Logical SP ID (0x%x)\n",
+			      lp_desc->sp_id);
+			return -EINVAL;
+		}
+
+		/* Ensure SPMD logical partition is in valid range. */
+		if (!is_spmd_lp_id(lp_desc->sp_id)) {
+			ERROR("Invalid SPMD Logical Partition ID (0x%x)\n",
+			      lp_desc->sp_id);
+			return -EINVAL;
+		}
+
+		/* Ensure the UUID is not the NULL UUID. */
+		if (lp_desc->uuid[0] == 0 && lp_desc->uuid[1] == 0 &&
+		    lp_desc->uuid[2] == 0 && lp_desc->uuid[3] == 0) {
+			ERROR("Invalid UUID for SPMD Logical SP (0x%x)\n",
+			      lp_desc->sp_id);
+			return -EINVAL;
+		}
+
+		/* Ensure init function callback is registered. */
+		if (lp_desc->init == NULL) {
+			ERROR("Missing init function for Logical SP(0x%x)\n",
+			      lp_desc->sp_id);
+			return -EINVAL;
+		}
+
+		/* Ensure that SPMD LP only supports sending direct requests. */
+		if (lp_desc->properties != FFA_PARTITION_DIRECT_REQ_SEND) {
+			ERROR("Invalid SPMD logical partition properties (0x%x)\n",
+			      lp_desc->properties);
+			return -EINVAL;
+		}
+
+		/* Ensure that all partition IDs are unique. */
+		for (uint32_t inner_idx = index + 1;
+		     inner_idx < SPMD_LP_DESCS_COUNT; inner_idx++) {
+			if (lp_desc->sp_id == lp_array[inner_idx].sp_id) {
+				ERROR("Duplicate SPMD logical SP ID Detected (0x%x)\n",
+				      lp_desc->sp_id);
+				return -EINVAL;
+			}
+		}
+	}
+	return 0;
+}
+
+static void spmd_encode_ffa_error(struct ffa_value *retval, int32_t error_code)
+{
+	retval->func = FFA_ERROR;
+	retval->arg1 = FFA_TARGET_INFO_MBZ;
+	retval->arg2 = (uint32_t)error_code;
+	retval->arg3 = FFA_TARGET_INFO_MBZ;
+	retval->arg4 = FFA_TARGET_INFO_MBZ;
+	retval->arg5 = FFA_TARGET_INFO_MBZ;
+	retval->arg6 = FFA_TARGET_INFO_MBZ;
+	retval->arg7 = FFA_TARGET_INFO_MBZ;
+}
+
+static void spmd_build_direct_message_req(spmd_spm_core_context_t *ctx,
+					  uint64_t function_id,
+					  uint64_t x1, uint64_t x2,
+					  uint64_t x3, uint64_t x4,
+					  uint64_t x5, uint64_t x6,
+					  uint64_t x7)
+{
+	gp_regs_t *gpregs = get_gpregs_ctx(&ctx->cpu_ctx);
+
+	write_ctx_reg(gpregs, CTX_GPREG_X0, function_id);
+	write_ctx_reg(gpregs, CTX_GPREG_X1, x1);
+	write_ctx_reg(gpregs, CTX_GPREG_X2, x2);
+	write_ctx_reg(gpregs, CTX_GPREG_X3, x3);
+	write_ctx_reg(gpregs, CTX_GPREG_X4, x4);
+	write_ctx_reg(gpregs, CTX_GPREG_X5, x5);
+	write_ctx_reg(gpregs, CTX_GPREG_X6, x6);
+	write_ctx_reg(gpregs, CTX_GPREG_X7, x7);
+}
+
+static void spmd_encode_ctx_to_ffa_value(spmd_spm_core_context_t *ctx,
+					 struct ffa_value *retval)
+{
+	gp_regs_t *gpregs = get_gpregs_ctx(&ctx->cpu_ctx);
+
+	retval->func = read_ctx_reg(gpregs, CTX_GPREG_X0);
+	retval->arg1 = read_ctx_reg(gpregs, CTX_GPREG_X1);
+	retval->arg2 = read_ctx_reg(gpregs, CTX_GPREG_X2);
+	retval->arg3 = read_ctx_reg(gpregs, CTX_GPREG_X3);
+	retval->arg4 = read_ctx_reg(gpregs, CTX_GPREG_X4);
+	retval->arg5 = read_ctx_reg(gpregs, CTX_GPREG_X5);
+	retval->arg6 = read_ctx_reg(gpregs, CTX_GPREG_X6);
+	retval->arg7 = read_ctx_reg(gpregs, CTX_GPREG_X7);
+	retval->arg8 = read_ctx_reg(gpregs, CTX_GPREG_X8);
+	retval->arg9 = read_ctx_reg(gpregs, CTX_GPREG_X9);
+	retval->arg10 = read_ctx_reg(gpregs, CTX_GPREG_X10);
+	retval->arg11 = read_ctx_reg(gpregs, CTX_GPREG_X11);
+	retval->arg12 = read_ctx_reg(gpregs, CTX_GPREG_X12);
+	retval->arg13 = read_ctx_reg(gpregs, CTX_GPREG_X13);
+	retval->arg14 = read_ctx_reg(gpregs, CTX_GPREG_X14);
+	retval->arg15 = read_ctx_reg(gpregs, CTX_GPREG_X15);
+	retval->arg16 = read_ctx_reg(gpregs, CTX_GPREG_X16);
+	retval->arg17 = read_ctx_reg(gpregs, CTX_GPREG_X17);
+}
+
+static void spmd_logical_sp_set_dir_req_ongoing(spmd_spm_core_context_t *ctx)
+{
+	ctx->spmd_lp_sync_req_ongoing |= SPMD_LP_FFA_DIR_REQ_ONGOING;
+}
+
+static void spmd_logical_sp_reset_dir_req_ongoing(spmd_spm_core_context_t *ctx)
+{
+	ctx->spmd_lp_sync_req_ongoing &= ~SPMD_LP_FFA_DIR_REQ_ONGOING;
+}
+
+static void spmd_build_ffa_info_get_regs(spmd_spm_core_context_t *ctx,
+					 const uint32_t uuid[4],
+					 const uint16_t start_index,
+					 const uint16_t tag)
+{
+	gp_regs_t *gpregs = get_gpregs_ctx(&ctx->cpu_ctx);
+
+	uint64_t arg1 = (uint64_t)uuid[1] << 32 | uuid[0];
+	uint64_t arg2 = (uint64_t)uuid[3] << 32 | uuid[2];
+	uint64_t arg3 = start_index | (uint64_t)tag << 16;
+
+	write_ctx_reg(gpregs, CTX_GPREG_X0, FFA_PARTITION_INFO_GET_REGS_SMC64);
+	write_ctx_reg(gpregs, CTX_GPREG_X1, arg1);
+	write_ctx_reg(gpregs, CTX_GPREG_X2, arg2);
+	write_ctx_reg(gpregs, CTX_GPREG_X3, arg3);
+	write_ctx_reg(gpregs, CTX_GPREG_X4, 0U);
+	write_ctx_reg(gpregs, CTX_GPREG_X5, 0U);
+	write_ctx_reg(gpregs, CTX_GPREG_X6, 0U);
+	write_ctx_reg(gpregs, CTX_GPREG_X7, 0U);
+	write_ctx_reg(gpregs, CTX_GPREG_X8, 0U);
+	write_ctx_reg(gpregs, CTX_GPREG_X9, 0U);
+	write_ctx_reg(gpregs, CTX_GPREG_X10, 0U);
+	write_ctx_reg(gpregs, CTX_GPREG_X11, 0U);
+	write_ctx_reg(gpregs, CTX_GPREG_X12, 0U);
+	write_ctx_reg(gpregs, CTX_GPREG_X13, 0U);
+	write_ctx_reg(gpregs, CTX_GPREG_X14, 0U);
+	write_ctx_reg(gpregs, CTX_GPREG_X15, 0U);
+	write_ctx_reg(gpregs, CTX_GPREG_X16, 0U);
+	write_ctx_reg(gpregs, CTX_GPREG_X17, 0U);
+}
+
+static void spmd_logical_sp_set_info_regs_ongoing(spmd_spm_core_context_t *ctx)
+{
+	ctx->spmd_lp_sync_req_ongoing |= SPMD_LP_FFA_INFO_GET_REG_ONGOING;
+}
+
+static void spmd_logical_sp_reset_info_regs_ongoing(
+		spmd_spm_core_context_t *ctx)
+{
+	ctx->spmd_lp_sync_req_ongoing &= ~SPMD_LP_FFA_INFO_GET_REG_ONGOING;
+}
+
+static void spmd_fill_lp_info_array(
+	struct ffa_partition_info_v1_3 (*partitions)[EL3_SPMD_MAX_NUM_LP],
+	uint32_t uuid[4], uint16_t *lp_count_out)
+{
+	uint16_t lp_count = 0;
+	struct spmd_lp_desc *lp_array;
+	bool uuid_is_null = is_null_uuid(uuid);
+
+	if (SPMD_LP_DESCS_COUNT == 0U) {
+		*lp_count_out = 0;
+		return;
+	}
+
+	lp_array = get_spmd_el3_lp_array();
+	for (uint16_t index = 0; index < SPMD_LP_DESCS_COUNT; ++index) {
+		struct spmd_lp_desc *lp = &lp_array[index];
+
+		if (uuid_is_null || uuid_match(uuid, lp->uuid)) {
+			uint16_t array_index = lp_count;
+
+			++lp_count;
+
+			(*partitions)[array_index].ep_id = lp->sp_id;
+			(*partitions)[array_index].execution_ctx_count = 1;
+			(*partitions)[array_index].properties = lp->properties;
+			(*partitions)[array_index].properties |=
+				(FFA_PARTITION_INFO_GET_AARCH64_STATE <<
+				 FFA_PARTITION_INFO_GET_EXEC_STATE_SHIFT);
+			if (uuid_is_null) {
+				memcpy(&((*partitions)[array_index].protocol_uuid),
+					  &lp->uuid, sizeof(lp->uuid));
+			}
+
+			/* Zero the Image UUID. */
+			memset(&((*partitions)[array_index].image_uuid),
+					  0, sizeof(lp->uuid));
+
+			/* Same as SPMD's version. */
+			(*partitions)[array_index].ffa_version = FFA_VERSION_COMPILED;
+		}
+	}
+
+	*lp_count_out = lp_count;
+}
+
+static inline void spmd_pack_lp_count_props(
+	uint64_t *xn, uint16_t ep_id, uint16_t vcpu_count,
+	uint32_t properties)
+{
+	*xn = (uint64_t)ep_id;
+	*xn |= (uint64_t)vcpu_count << 16;
+	*xn |= (uint64_t)properties << 32;
+}
+
+static inline void spmd_pack_lp_uuid(uint64_t *xn_1, uint64_t *xn_2,
+				     uint32_t uuid[4])
+{
+	*xn_1 = (uint64_t)uuid[0];
+	*xn_1 |= (uint64_t)uuid[1] << 32;
+	*xn_2 = (uint64_t)uuid[2];
+	*xn_2 |= (uint64_t)uuid[3] << 32;
+}
+#endif
+
+/*
+ * Initialize SPMD logical partitions. This function assumes that it is called
+ * only after the SPMC has successfully initialized.
+ */
+int32_t spmd_logical_sp_init(void)
+{
+#if ENABLE_SPMD_LP
+	int32_t rc = 0;
+	struct spmd_lp_desc *spmd_lp_descs;
+
+	assert(SPMD_LP_DESCS_COUNT <= EL3_SPMD_MAX_NUM_LP);
+
+	if (is_spmd_lp_inited == true) {
+		return 0;
+	}
+
+	if (is_spmc_inited == false) {
+		return -1;
+	}
+
+	spmd_lp_descs = get_spmd_el3_lp_array();
+
+	/* Perform initial validation of the SPMD Logical Partitions. */
+	rc = el3_spmd_sp_desc_validate(spmd_lp_descs);
+	if (rc != 0) {
+		ERROR("Logical SPMD Partition validation failed!\n");
+		return rc;
+	}
+
+	VERBOSE("SPMD Logical Secure Partition init start.\n");
+	for (unsigned int i = 0U; i < SPMD_LP_DESCS_COUNT; i++) {
+		rc = spmd_lp_descs[i].init();
+		if (rc != 0) {
+			ERROR("SPMD Logical SP (0x%x) failed to initialize\n",
+			      spmd_lp_descs[i].sp_id);
+			return rc;
+		}
+		VERBOSE("SPMD Logical SP (0x%x) Initialized\n",
+			spmd_lp_descs[i].sp_id);
+	}
+
+	INFO("SPMD Logical Secure Partition init completed.\n");
+	if (rc == 0) {
+		is_spmd_lp_inited = true;
+	}
+	return rc;
+#else
+	return 0;
+#endif
+}
+
+void spmd_logical_sp_set_spmc_initialized(void)
+{
+#if ENABLE_SPMD_LP
+	is_spmc_inited = true;
+#endif
+}
+
+void spmd_logical_sp_set_spmc_failure(void)
+{
+#if ENABLE_SPMD_LP
+	is_spmc_inited = false;
+#endif
+}
+
+/*
+ * This function takes an ffa_value structure populated with partition
+ * information from an FFA_PARTITION_INFO_GET_REGS ABI call, extracts
+ * the values and writes it into a ffa_partition_info structure for
+ * other code to consume.
+ */
+bool ffa_partition_info_regs_get_part_info(
+	struct ffa_value *args, uint8_t idx,
+	struct ffa_partition_info_v1_3 *partition_info)
+{
+	uint64_t *arg_ptrs;
+	uint64_t info, uuid_lo, uuid_high, image_uuid_lo, image_uuid_high, version;
+
+	/*
+	 * Each partition information is encoded in 6 registers, so there can be
+	 * a maximum of 2 entries.
+	 */
+	if (idx >= MAX_INFO_REGS_ENTRIES_PER_CALL || partition_info == NULL) {
+		return false;
+	}
+
+	/*
+	 * List of pointers to args in return value. arg0/func encodes ff-a
+	 * function, arg1 is reserved, arg2 encodes indices. arg3 and greater
+	 * values reflect partition properties.
+	 */
+	arg_ptrs = (uint64_t *)args + ((idx * 6) + 3);
+	info = *arg_ptrs;
+
+	arg_ptrs++;
+	uuid_lo = *arg_ptrs;
+
+	arg_ptrs++;
+	uuid_high = *arg_ptrs;
+
+	arg_ptrs++;
+	image_uuid_lo = *arg_ptrs;
+
+	arg_ptrs++;
+	image_uuid_high = *arg_ptrs;
+
+	arg_ptrs++;
+	version = *arg_ptrs;
+
+	partition_info->ep_id = (uint16_t)info;
+	partition_info->execution_ctx_count = (uint16_t)(info >> 16);
+	partition_info->properties = (uint32_t)(info >> 32);
+	partition_info->protocol_uuid[0] = (uint32_t)uuid_lo;
+	partition_info->protocol_uuid[1] = (uint32_t)(uuid_lo >> 32);
+	partition_info->protocol_uuid[2] = (uint32_t)uuid_high;
+	partition_info->protocol_uuid[3] = (uint32_t)(uuid_high >> 32);
+	partition_info->image_uuid[0] = (uint32_t)image_uuid_lo;
+	partition_info->image_uuid[1] = (uint32_t)(image_uuid_lo >> 32);
+	partition_info->image_uuid[2] = (uint32_t)image_uuid_high;
+	partition_info->image_uuid[3] = (uint32_t)(image_uuid_high >> 32);
+	partition_info->ffa_version = (uint32_t)version;
+	return true;
+}
+
+/*
+ * This function is called by the SPMD in response to
+ * an FFA_PARTITION_INFO_GET_REG ABI invocation by the SPMC. Secure partitions
+ * are allowed to discover the presence of EL3 SPMD logical partitions by
+ * invoking the aforementioned ABI and this function populates the required
+ * information about EL3 SPMD logical partitions.
+ */
+uint64_t spmd_el3_populate_logical_partition_info(void *handle, uint64_t x1,
+						  uint64_t x2, uint64_t x3)
+{
+#if ENABLE_SPMD_LP
+	uint32_t target_uuid[4] = { 0 };
+	uint32_t w0;
+	uint32_t w1;
+	uint32_t w2;
+	uint32_t w3;
+	uint16_t start_index;
+	uint16_t tag;
+	static struct ffa_partition_info_v1_3 partitions[EL3_SPMD_MAX_NUM_LP];
+	uint16_t lp_count = 0;
+	uint16_t max_idx = 0;
+	uint16_t curr_idx = 0;
+	uint8_t num_entries_to_ret = 0;
+	struct ffa_value ret = { 0 };
+	uint64_t *arg_ptrs = (uint64_t *)&ret + 3;
+
+	w0 = (uint32_t)(x1 & 0xFFFFFFFFU);
+	w1 = (uint32_t)(x1 >> 32);
+	w2 = (uint32_t)(x2 & 0xFFFFFFFFU);
+	w3 = (uint32_t)(x2 >> 32);
+
+	target_uuid[0] = w0;
+	target_uuid[1] = w1;
+	target_uuid[2] = w2;
+	target_uuid[3] = w3;
+
+	start_index = (uint16_t)(x3 & 0xFFFFU);
+	tag = (uint16_t)((x3 >> 16) & 0xFFFFU);
+
+	assert(handle == cm_get_context(SECURE));
+
+	if (tag != 0) {
+		VERBOSE("Tag is not 0. Cannot return partition info.\n");
+		return spmd_ffa_error_return(handle, FFA_ERROR_RETRY);
+	}
+
+	memset(&partitions, 0, sizeof(partitions));
+
+	spmd_fill_lp_info_array(&partitions, target_uuid, &lp_count);
+
+	if (lp_count == 0) {
+		VERBOSE("No SPDM EL3 logical partitions exist.\n");
+		return spmd_ffa_error_return(handle, FFA_ERROR_NOT_SUPPORTED);
+	}
+
+	if (start_index >= lp_count) {
+		VERBOSE("start_index = %d, lp_count = %d (start index must be"
+			" less than partition count.\n",
+			start_index, lp_count);
+		return spmd_ffa_error_return(handle,
+					     FFA_ERROR_INVALID_PARAMETER);
+	}
+
+	max_idx = lp_count - 1;
+	num_entries_to_ret = (max_idx - start_index) + 1;
+	num_entries_to_ret =
+		MIN(num_entries_to_ret, (uint8_t)MAX_INFO_REGS_ENTRIES_PER_CALL);
+	curr_idx = start_index + num_entries_to_ret - 1;
+	assert(curr_idx <= max_idx);
+
+	ret.func = FFA_SUCCESS_SMC64;
+	ret.arg2 = (uint64_t)((sizeof(struct ffa_partition_info_v1_3) & 0xFFFFU) << 48);
+	ret.arg2 |= (uint64_t)(curr_idx << 16);
+	ret.arg2 |= (uint64_t)max_idx;
+
+	for (uint16_t idx = start_index; idx <= curr_idx; ++idx) {
+		spmd_pack_lp_count_props(arg_ptrs, partitions[idx].ep_id,
+					 partitions[idx].execution_ctx_count,
+					 partitions[idx].properties);
+		arg_ptrs++;
+		if (is_null_uuid(target_uuid)) {
+			/* Protocol UUID occupies two 64-bit registers. */
+			spmd_pack_lp_uuid(arg_ptrs, (arg_ptrs + 1),
+					  partitions[idx].protocol_uuid);
+		}
+		arg_ptrs += 2;
+
+		/* Image UUID occupies two 64-bit registers. */
+		spmd_pack_lp_uuid(arg_ptrs, (arg_ptrs + 1),
+					  partitions[idx].image_uuid);
+		arg_ptrs += 2;
+
+		/* FF-A version. */
+		*arg_ptrs = partitions[idx].ffa_version;
+		arg_ptrs += 1;
+	}
+
+	SMC_RET18(handle, ret.func, ret.arg1, ret.arg2, ret.arg3, ret.arg4,
+		  ret.arg5, ret.arg6, ret.arg7, ret.arg8, ret.arg9, ret.arg10,
+		  ret.arg11, ret.arg12, ret.arg13, ret.arg14, ret.arg15,
+		  ret.arg16, ret.arg17);
+#else
+	return spmd_ffa_error_return(handle, FFA_ERROR_NOT_SUPPORTED);
+#endif
+}
+
+/* This function can be used by an SPMD logical partition to invoke the
+ * FFA_PARTITION_INFO_GET_REGS ABI to the SPMC, to discover the secure
+ * partitions in the system. The function takes a UUID, start index and
+ * tag and the partition information are returned in an ffa_value structure
+ * and can be consumed by using appropriate helper functions.
+ */
+bool spmd_el3_invoke_partition_info_get(
+				const uint32_t target_uuid[4],
+				const uint16_t start_index,
+				const uint16_t tag,
+				struct ffa_value *retval)
+{
+#if ENABLE_SPMD_LP
+	uint64_t rc = UINT64_MAX;
+	spmd_spm_core_context_t *ctx = spmd_get_context();
+
+	if (retval == NULL) {
+		return false;
+	}
+
+	memset(retval, 0, sizeof(*retval));
+
+	if (!is_spmc_inited) {
+		VERBOSE("Cannot discover partition before,"
+			" SPMC is initialized.\n");
+			spmd_encode_ffa_error(retval, FFA_ERROR_DENIED);
+		return true;
+	}
+
+	if (tag != 0) {
+		VERBOSE("Tag must be zero. other tags unsupported\n");
+			spmd_encode_ffa_error(retval,
+					      FFA_ERROR_INVALID_PARAMETER);
+		return true;
+	}
+
+	/* Save the non-secure context before entering SPMC */
+#if SPMD_SPM_AT_SEL2
+	cm_el2_sysregs_context_save(NON_SECURE);
+	cm_el2_sysregs_context_save_gic(NON_SECURE);
+#else
+	cm_el1_sysregs_context_save(NON_SECURE);
+#endif
+
+	spmd_build_ffa_info_get_regs(ctx, target_uuid, start_index, tag);
+	spmd_logical_sp_set_info_regs_ongoing(ctx);
+
+	rc = spmd_spm_core_sync_entry(ctx);
+	if (rc != 0ULL) {
+		ERROR("%s failed (%lx) on CPU%u\n", __func__, rc,
+		      plat_my_core_pos());
+		panic();
+	}
+
+	spmd_logical_sp_reset_info_regs_ongoing(ctx);
+	spmd_encode_ctx_to_ffa_value(ctx, retval);
+
+	assert(is_ffa_error(retval) || is_ffa_success(retval));
+
+#if SPMD_SPM_AT_SEL2
+	cm_el2_sysregs_context_restore(NON_SECURE);
+	cm_el2_sysregs_context_restore_gic(NON_SECURE);
+#else
+	cm_el1_sysregs_context_restore(NON_SECURE);
+#endif
+	cm_set_next_eret_context(NON_SECURE);
+	return true;
+#else
+	return false;
+#endif
+}
+
+/*******************************************************************************
+ * Common helper function for sending FF-A Direct Requests from EL3.
+ * This function contains the common logic for both Direct Request and
+ * Direct Request2 ABIs.
+ *
+ * x1, x2, x3, x4, x5, x6, x7: Parameters as specified in FF-A specification
+ * ffa_msg_function_id: FFA function ID to use (Direct Req or Direct Req2)
+ * handle: Context handle (must be non-secure)
+ * retval: Output parameter for direct response values
+ * return true if retval has valid values, false otherwise
+ ******************************************************************************/
+static bool spmd_el3_ffa_msg_direct_req_common(uint64_t x1,
+				 uint64_t x2,
+				 uint64_t x3,
+				 uint64_t x4,
+				 uint64_t x5,
+				 uint64_t x6,
+				 uint64_t x7,
+				 uint64_t ffa_msg_function_id,
+				 void *handle,
+				 struct ffa_value *retval)
+{
+#if ENABLE_SPMD_LP
+
+	uint64_t rc = UINT64_MAX;
+	spmd_spm_core_context_t *ctx = spmd_get_context();
+
+	if (retval == NULL) {
+		return false;
+	}
+
+	memset(retval, 0, sizeof(*retval));
+
+	if (!is_spmd_lp_inited || !is_spmc_inited) {
+		VERBOSE("Cannot send SPMD logical partition direct message,"
+			" Partitions not initialized or SPMC not initialized.\n");
+			spmd_encode_ffa_error(retval, FFA_ERROR_DENIED);
+		return true;
+	}
+
+	/*
+	 * Current context must be non-secure. API is expected to be used
+	 * when entry into EL3 and the SPMD logical partition is via an
+	 * interrupt that occurs when execution is in normal world and
+	 * SMCs from normal world. FF-A compliant SPMCs are expected to
+	 * trap interrupts during secure execution in lower ELs since they
+	 * are usually not re-entrant and SMCs from secure world can be
+	 * handled synchronously. There is no known use case for an SPMD
+	 * logical partition to send a direct message to another partition
+	 * in response to a secure interrupt or SMCs from secure world.
+	 */
+	if (handle != cm_get_context(NON_SECURE)) {
+		VERBOSE("Handle must be for the non-secure context.\n");
+			spmd_encode_ffa_error(retval, FFA_ERROR_DENIED);
+		return true;
+	}
+
+	if (!is_spmd_lp_id(ffa_endpoint_source(x1))) {
+		VERBOSE("Source ID must be valid SPMD logical partition"
+			" ID.\n");
+			spmd_encode_ffa_error(retval,
+					      FFA_ERROR_INVALID_PARAMETER);
+		return true;
+	}
+
+	if (is_spmd_lp_id(ffa_endpoint_destination(x1))) {
+		VERBOSE("Destination ID must not be SPMD logical partition"
+			" ID.\n");
+			spmd_encode_ffa_error(retval,
+					      FFA_ERROR_INVALID_PARAMETER);
+		return true;
+	}
+
+	if (!ffa_is_secure_world_id(ffa_endpoint_destination(x1))) {
+		VERBOSE("Destination ID must be secure world ID.\n");
+			spmd_encode_ffa_error(retval,
+					      FFA_ERROR_INVALID_PARAMETER);
+		return true;
+	}
+
+	if (ffa_endpoint_destination(x1) == SPMD_DIRECT_MSG_ENDPOINT_ID) {
+		VERBOSE("Destination ID must not be SPMD ID.\n");
+			spmd_encode_ffa_error(retval,
+					      FFA_ERROR_INVALID_PARAMETER);
+		return true;
+	}
+
+	/* Save the non-secure context before entering SPMC */
+#if SPMD_SPM_AT_SEL2
+	cm_el2_sysregs_context_save(NON_SECURE);
+	cm_el2_sysregs_context_save_gic(NON_SECURE);
+#else
+	cm_el1_sysregs_context_save(NON_SECURE);
+#endif
+
+	/*
+	 * Perform synchronous entry into the SPMC. Synchronous entry is
+	 * required because the spec requires that a direct message request
+	 * from an SPMD LP look like a function call from it's perspective.
+	 */
+	spmd_build_direct_message_req(ctx, ffa_msg_function_id,
+					x1, x2, x3, x4, x5, x6, x7);
+	spmd_logical_sp_set_dir_req_ongoing(ctx);
+
+	rc = spmd_spm_core_sync_entry(ctx);
+
+	spmd_logical_sp_reset_dir_req_ongoing(ctx);
+
+	if (rc != 0ULL) {
+		ERROR("%s failed (%lx) on CPU%u\n", __func__, rc,
+		      plat_my_core_pos());
+		panic();
+	} else {
+		spmd_encode_ctx_to_ffa_value(ctx, retval);
+
+		/*
+		 * Only expect error or direct response,
+		 * spmd_spm_core_sync_exit should not be called on other paths.
+		 * Checks are asserts since the LSP can fail gracefully if the
+		 * source or destination ids are not the same. Panic'ing would
+		 * not provide any benefit.
+		 */
+		assert(is_ffa_error(retval) || is_ffa_direct_msg_resp(retval));
+		assert(is_ffa_error(retval) ||
+			(ffa_endpoint_destination(retval->arg1) ==
+				ffa_endpoint_source(x1)));
+		assert(is_ffa_error(retval) ||
+			(ffa_endpoint_source(retval->arg1) ==
+				ffa_endpoint_destination(x1)));
+	}
+
+#if SPMD_SPM_AT_SEL2
+	cm_el2_sysregs_context_restore(NON_SECURE);
+	cm_el2_sysregs_context_restore_gic(NON_SECURE);
+#else
+	cm_el1_sysregs_context_restore(NON_SECURE);
+#endif
+	cm_set_next_eret_context(NON_SECURE);
+
+	return true;
+#else
+	return false;
+#endif
+}
+
+/*******************************************************************************
+ * This function sends an FF-A Direct Request2 from a partition in EL3 to a
+ * partition that may reside under an SPMC (only lower ELs supported). The main
+ * use of this API is for SPMD logical partitions.
+ * The API is expected to be used when there are platform specific SMCs that
+ * need to be routed to a secure partition that is FF-A compliant or when
+ * there are group 0 interrupts that need to be handled first in EL3 and then
+ * forwarded to an FF-A compliant secure partition. Therefore, it is expected
+ * that the handle to the context provided belongs to the non-secure context.
+ * This also means that interrupts/SMCs that trap to EL3 during secure execution
+ * cannot use this API.
+ * x1, x2, x3, and x4 are encoded as specified in the FF-A specification.
+ * retval is used to pass the direct response values to the caller.
+ * The function returns true if retval has valid values, and false otherwise.
+ ******************************************************************************/
+bool spmd_el3_ffa_msg_direct_req2(uint64_t x1,
+				 uint64_t x2,
+				 uint64_t x3,
+				 uint64_t x4,
+				 void *handle,
+				 struct ffa_value *retval)
+{
+	return spmd_el3_ffa_msg_direct_req_common(x1, x2, x3, x4, 0U, 0U, 0U,
+						  FFA_MSG_SEND_DIRECT_REQ2_SMC64,
+						  handle,
+						  retval);
+}
+
+
+/*******************************************************************************
+ * This function sends an FF-A Direct Request from a partition in EL3 to SPMC
+ * or a partition that may reside under an SPMC (only lower ELs supported). The
+ * main use of this API is for SPMD LSP (logical secure partitions).
+ * The API is expected to be used when:
+ *  - There are platform specific SMCs that need to be routed to a secure
+      partition that is FF-A compliant.
+ *  - There are group 0 interrupts that need to be handled first in EL3 and then
+ *    forwarded to an FF-A compliant secure partition.
+ *  - Framework messages need to be sent by an LSP to SPMC for live activating
+ *    a Secure Partition in lower ELs.
+
+ * Therefore, it is expected that the handle to the context provided belongs to
+ * the non-secure context. This also means that interrupts/SMCs that trap to EL3
+ * during secure execution cannot use this API.
+ * x1, x2, x3, x4, x5, x6 and x7 are encoded as specified in the FF-A spec.
+ * retval is used to pass the direct response values to the caller.
+ * The function returns true if retval has valid values, and false otherwise.
+ ******************************************************************************/
+bool spmd_el3_ffa_msg_direct_req(uint64_t x1,
+				 uint64_t x2,
+				 uint64_t x3,
+				 uint64_t x4,
+				 uint64_t x5,
+				 uint64_t x6,
+				 uint64_t x7,
+				 void *handle,
+				 struct ffa_value *retval)
+{
+	return spmd_el3_ffa_msg_direct_req_common(x1, x2, x3, x4, x5, x6, x7,
+						  FFA_MSG_SEND_DIRECT_REQ_SMC64,
+						  handle,
+						  retval);
+}
+
+bool
+is_spmd_logical_sp_info_regs_req_in_progress(const spmd_spm_core_context_t *ctx)
+{
+#if ENABLE_SPMD_LP
+	return ((ctx->spmd_lp_sync_req_ongoing & SPMD_LP_FFA_INFO_GET_REG_ONGOING)
+			== SPMD_LP_FFA_INFO_GET_REG_ONGOING);
+#else
+	return false;
+#endif
+}
+
+bool is_spmd_logical_sp_dir_req_in_progress(const spmd_spm_core_context_t *ctx)
+{
+#if ENABLE_SPMD_LP
+	return ((ctx->spmd_lp_sync_req_ongoing & SPMD_LP_FFA_DIR_REQ_ONGOING)
+		== SPMD_LP_FFA_DIR_REQ_ONGOING);
+#else
+	return false;
+#endif
+}
+
+#if SUPPORT_SP_LIVE_ACTIVATION
+enum lfa_retc convert_ffa_error_code_to_lfa(int32_t ffa_error_code)
+{
+	switch (ffa_error_code) {
+	case FFA_ERROR_NOT_SUPPORTED:
+		return LFA_NOT_SUPPORTED;
+	case FFA_ERROR_INVALID_PARAMETER:
+		return LFA_INVALID_PARAMETERS;
+	case FFA_ERROR_NO_MEMORY:
+		return LFA_NO_MEMORY;
+	case FFA_ERROR_DENIED:
+		return LFA_COMPONENT_WRONG_STATE;
+	case FFA_ERROR_INTERRUPTED:
+		__fallthrough;
+	case FFA_ERROR_BUSY:
+		__fallthrough;
+	case FFA_ERROR_RETRY:
+		return LFA_BUSY;
+	case FFA_ERROR_ABORTED:
+		return LFA_CRITICAL_ERROR;
+	default:
+		return LFA_ACTIVATION_FAILED;
+	}
+}
+
+static bool spmd_lsp_build_live_activation_request(
+	uint16_t lsp_id, uint16_t sp_id, uintptr_t image_base,
+	uint32_t image_page_count, uintptr_t manifest_base,
+	uint32_t manifest_page_count, uint64_t msg_flags,
+	enum lfa_retc *lfa_ret, struct ffa_value *retval)
+{
+	bool status;
+	uint64_t send_recv_id;
+	cpu_context_t *handle;
+	uint64_t x4, x5, x6, x7;
+
+	x4 = image_base;
+	x5 = image_page_count;
+	x6 = manifest_base;
+	x7 = manifest_page_count;
+
+	/* Get a reference to the non-secure context */
+	handle = cm_get_context(NON_SECURE);
+	assert(handle != NULL);
+
+	if (!is_spmd_lp_id(lsp_id)) {
+		ERROR("Invalid SPMD Logical Partition ID (0x%x)\n", lsp_id);
+		*lfa_ret = convert_ffa_error_code_to_lfa(
+			FFA_ERROR_INVALID_PARAMETER);
+		return false;
+	}
+
+	if (!ffa_is_secure_world_id(sp_id)) {
+		ERROR("Invalid Secure Partition ID (0x%x) specified for live activation\n",
+		      sp_id);
+		*lfa_ret = convert_ffa_error_code_to_lfa(
+			FFA_ERROR_INVALID_PARAMETER);
+		return false;
+	}
+
+	/*
+	 * Build a direct request framework message for partition live activation
+	 * request. Sender is SPMD LSP and receiver is SPMC.
+	 */
+	send_recv_id = (lsp_id << 16) | spmd_spmc_id_get();
+
+	status = spmd_el3_ffa_msg_direct_req(send_recv_id, msg_flags, sp_id, x4,
+					     x5, x6, x7, (void *)handle,
+					     retval);
+
+	if (!status) {
+		ERROR("Failed to build SP live activation request.\n");
+		panic();
+	}
+
+	return true;
+}
+
+static enum lfa_retc
+spmd_lsp_check_live_activation_response(struct ffa_value retval,
+					uint64_t resp_msg)
+{
+	/*
+	 * SPMC does not support framework message which implies that Live
+	 * Activation cannot be supported.
+	 */
+	if (is_ffa_error(&retval)) {
+		return convert_ffa_error_code_to_lfa((int32_t)retval.arg2);
+	}
+
+	/* Check the direct response message fields. */
+	if (retval.arg2 != resp_msg) {
+		ERROR("SPMC failed to process live activation message\n");
+		return LFA_ACTIVATION_FAILED;
+	}
+
+	/* Check if the response indicates any kind of failure. */
+	if (retval.arg3 != 0U) {
+		return convert_ffa_error_code_to_lfa((int32_t)retval.arg3);
+	}
+
+	/* SUCCESS */
+	return LFA_SUCCESS;
+}
+
+enum lfa_retc spmd_lsp_start_request_sp_live_activation(
+	uint16_t lsp_id, uint16_t sp_id, uintptr_t image_base,
+	uint32_t image_page_count, uintptr_t manifest_base,
+	uint32_t manifest_page_count)
+{
+	/* Message flags: */
+	uint64_t msg_flags = FFA_FWK_MSG_BIT |
+			     LSP_FWK_MSG_START_LIVE_ACTIVATION_REQ;
+	enum lfa_retc lfa_ret = LFA_ACTIVATION_FAILED;
+	bool proceed;
+	struct ffa_value ffa_ret = { 0 };
+	uint64_t resp_msg = 0U;
+
+	assert(image_base != 0U && image_page_count != 0U);
+	proceed = spmd_lsp_build_live_activation_request(
+		lsp_id, sp_id, image_base, image_page_count, manifest_base,
+		manifest_page_count, msg_flags, &lfa_ret, &ffa_ret);
+
+	if (!proceed) {
+		return lfa_ret;
+	}
+
+	resp_msg = (FFA_FWK_MSG_BIT | LSP_FWK_MSG_START_LIVE_ACTIVATION_RESP);
+	lfa_ret = spmd_lsp_check_live_activation_response(ffa_ret, resp_msg);
+	return lfa_ret;
+}
+
+enum lfa_retc spmd_lsp_finish_request_sp_live_activation(uint16_t lsp_id,
+							 uint16_t sp_id)
+{
+	/* Message flags: */
+	uint64_t msg_flags = FFA_FWK_MSG_BIT |
+			     LSP_FWK_MSG_FINISH_LIVE_ACTIVATION_REQ;
+	enum lfa_retc lfa_ret = LFA_ACTIVATION_FAILED;
+	bool proceed;
+	struct ffa_value ffa_ret = { 0 };
+	uint64_t resp_msg = 0U;
+
+	proceed = spmd_lsp_build_live_activation_request(
+		lsp_id, sp_id, 0, 0, 0, 0, msg_flags, &lfa_ret, &ffa_ret);
+
+	if (!proceed) {
+		return lfa_ret;
+	}
+
+	resp_msg = (FFA_FWK_MSG_BIT | LSP_FWK_MSG_FINISH_LIVE_ACTIVATION_RESP);
+	lfa_ret = spmd_lsp_check_live_activation_response(ffa_ret, resp_msg);
+	return lfa_ret;
+}
+
+#endif /* SUPPORT_SP_LIVE_ACTIVATION */

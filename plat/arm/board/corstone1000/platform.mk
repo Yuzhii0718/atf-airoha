@@ -1,0 +1,105 @@
+#
+# Copyright (c) 2021-2026 Arm Limited and Contributors. All rights reserved.
+# Copyright (c) 2026, BayLibre SAS
+#
+# SPDX-License-Identifier: BSD-3-Clause
+#
+
+# Making sure the corstone1000 platform type is specified
+ifeq ($(filter ${TARGET_PLATFORM}, fpga fvp),)
+        $(error TARGET_PLATFORM must be fpga or fvp)
+endif
+
+ifeq ($(CORSTONE1000_CORTEX_A320), 1)
+CORSTONE1000_CPU_LIBS	+=lib/cpus/aarch64/cortex_a320.S
+$(eval $(call add_define,CORSTONE1000_CORTEX_A320))
+GIC_ENABLE_V4_EXTN		:= 1
+GICV3_SUPPORT_GIC600		:= 1
+else
+CORSTONE1000_CPU_LIBS	+=lib/cpus/aarch64/cortex_a35.S
+endif
+
+# FEAT_CRC32 is impelemented in the armv8.0 core
+ARM_ARCH_FEATURE	:=	crc
+
+PLAT_INCLUDES		:=	-Iplat/arm/board/corstone1000/common/include	\
+				-Iplat/arm/board/corstone1000/include		\
+				-Iinclude/plat/arm/common			\
+				-Iinclude/plat/arm/css/common/aarch64
+
+override ARM_PLAT_PROVIDES_BL2_MEM_PARAMS	:=	1
+
+CORSTONE1000_FW_NVCTR_VAL	:=	255
+TFW_NVCTR_VAL		:=	${CORSTONE1000_FW_NVCTR_VAL}
+NTFW_NVCTR_VAL		:=	${CORSTONE1000_FW_NVCTR_VAL}
+
+override NEED_BL1	:=	no
+
+override NEED_BL2	:=	yes
+FIP_BL2_ARGS := tb-fw
+
+override NEED_BL2U	:=	no
+override NEED_BL31	:=	yes
+NEED_BL32		?=	yes
+override NEED_BL33	:=	yes
+
+# Add CORSTONE1000_WITH_BL32 as a preprocessor define (-D option)
+ifeq (${NEED_BL32},yes)
+$(eval $(call add_define,CORSTONE1000_WITH_BL32))
+endif
+
+ENABLE_MULTICORE       :=      0
+ifeq (${ENABLE_MULTICORE},1)
+$(eval $(call add_define,CORSTONE1000_MULTICORE))
+endif
+
+ifeq ($(CORSTONE1000_CORTEX_A320), 1)
+USE_GIC_DRIVER			:=	3
+else
+USE_GIC_DRIVER			:=	2
+endif
+
+BL2_SOURCES		+=	plat/arm/board/corstone1000/common/corstone1000_security.c		\
+				plat/arm/board/corstone1000/common/corstone1000_err.c		\
+				plat/arm/board/corstone1000/common/corstone1000_trusted_boot.c	\
+				lib/utils/mem_region.c					\
+				lib/cpus/aarch64/cpu_helpers.S \
+				plat/arm/board/corstone1000/common/corstone1000_helpers.S		\
+				plat/arm/board/corstone1000/common/corstone1000_plat.c		\
+				plat/arm/board/corstone1000/common/corstone1000_bl2_mem_params_desc.c \
+				${CORSTONE1000_CPU_LIBS}					\
+
+
+BL31_SOURCES	+=	drivers/cfi/v2m/v2m_flash.c				\
+			lib/utils/mem_region.c					\
+			plat/arm/board/corstone1000/common/corstone1000_helpers.S		\
+			plat/arm/board/corstone1000/common/corstone1000_topology.c		\
+			plat/arm/board/corstone1000/common/corstone1000_security.c		\
+			plat/arm/board/corstone1000/common/corstone1000_plat.c		\
+			plat/arm/board/corstone1000/common/corstone1000_pm.c		\
+			plat/arm/board/corstone1000/common/corstone1000_bl31_setup.c	\
+			plat/common/plat_hold_pen.c				\
+			${CORSTONE1000_CPU_LIBS}
+
+ifneq (${ENABLE_STACK_PROTECTOR},0)
+	ifneq (${ENABLE_STACK_PROTECTOR},none)
+		CORSTONE1000_SECURITY_SOURCES := plat/arm/board/corstone1000/common/corstone1000_stack_protector.c
+		BL2_SOURCES += ${CORSTONE1000_SECURITY_SOURCES}
+		BL31_SOURCES += ${CORSTONE1000_SECURITY_SOURCES}
+	endif
+endif
+
+FDT_SOURCES		+=	plat/arm/board/corstone1000/common/fdts/corstone1000_spmc_manifest.dts
+CORSTONE1000_TOS_FW_CONFIG	:=	${BUILD_PLAT}/fdts/corstone1000_spmc_manifest.dtb
+
+# Add the SPMC manifest to FIP and specify the same to certtool
+$(eval $(call TOOL_ADD_PAYLOAD,${CORSTONE1000_TOS_FW_CONFIG},--tos-fw-config,${CORSTONE1000_TOS_FW_CONFIG}))
+
+# Adding TARGET_PLATFORM as a GCC define (-D option)
+$(eval $(call add_define,TARGET_PLATFORM_$(call uppercase,${TARGET_PLATFORM})))
+
+# Adding CORSTONE1000_FW_NVCTR_VAL as a GCC define (-D option)
+$(eval $(call add_define,CORSTONE1000_FW_NVCTR_VAL))
+
+include plat/arm/common/arm_common.mk
+include plat/arm/board/common/board_common.mk

@@ -1,0 +1,96 @@
+NVIDIA Tegra
+============
+
+-  .. rubric:: T194
+      :name: t194
+
+T194 has eight NVIDIA Carmel CPU cores in a coherent multi-processor
+configuration. The Carmel cores support the ARM Architecture version 8.2,
+executing both 64-bit AArch64 code, and 32-bit AArch32 code. The Carmel
+processors are organized as four dual-core clusters, where each cluster has
+a dedicated 2 MiB Level-2 unified cache. A high speed coherency fabric connects
+these processor complexes and allows heterogeneous multi-processing with all
+eight cores if required.
+
+Directory structure
+-------------------
+
+-  plat/nvidia/tegra/common - Common code for all Tegra SoCs
+-  plat/nvidia/tegra/soc/txxx - Chip specific code
+
+Trusted OS dispatcher
+---------------------
+
+Tegra supports multiple Trusted OS'.
+
+- Trusted Little Kernel (TLK): In order to include the 'tlkd' dispatcher in
+  the image, pass 'SPD=tlkd' on the command line while preparing a bl31 image.
+- Trusty: In order to include the 'trusty' dispatcher in the image, pass
+  'SPD=trusty' on the command line while preparing a bl31 image.
+
+This allows other Trusted OS vendors to use the upstream code and include
+their dispatchers in the image without changing any makefiles.
+
+These are the supported Trusted OS' by Tegra platforms.
+
+- Tegra194: Trusty
+
+Scatter files
+-------------
+
+Tegra platforms currently support scatter files and ld.S scripts. The scatter
+files help support ARMLINK linker to generate BL31 binaries. For now, there
+exists a common scatter file, plat/nvidia/tegra/scat/bl31.scat, for all Tegra
+SoCs. The `LINKER` build variable needs to point to the ARMLINK binary for
+the scatter file to be used. Tegra platforms have verified BL31 image generation
+with ARMCLANG (compilation) and ARMLINK (linking) for the Tegra186 platforms.
+
+Preparing the BL31 image to run on Tegra SoCs
+---------------------------------------------
+
+.. code:: shell
+
+    CROSS_COMPILE=<path-to-aarch64-gcc>/bin/aarch64-none-elf- make PLAT=tegra \
+    TARGET_SOC=<target-soc e.g. t194> SPD=<dispatcher e.g. trusty|tlkd>
+    bl31
+
+Note that all Tegra platforms only support compiling with GCC or ARMCLANG. Clang
+is not supported. Images will compile with clang, but will not boot.
+
+Platforms wanting to use different TZDRAM\_BASE, can add ``TZDRAM_BASE=<value>``
+to the build command line.
+
+The Tegra platform code expects a pointer to the following platform specific
+structure via 'x1' register from the BL2 layer which is used by the
+bl31\_early\_platform\_setup() handler to extract the TZDRAM carveout base and
+size for loading the Trusted OS and the UART port ID to be used. The Tegra
+memory controller driver programs this base/size in order to restrict NS
+accesses.
+
+typedef struct plat\_params\_from\_bl2 {
+/\* TZ memory size */
+uint64\_t tzdram\_size;
+/* TZ memory base */
+uint64\_t tzdram\_base;
+/* UART port ID \*/
+int uart\_id;
+/* L2 ECC parity protection disable flag \*/
+int l2\_ecc\_parity\_prot\_dis;
+/* SHMEM base address for storing the boot logs \*/
+uint64\_t boot\_profiler\_shmem\_base;
+} plat\_params\_from\_bl2\_t;
+
+Power Management
+----------------
+
+The PSCI implementation expects each platform to expose the 'power state'
+parameter to be used during the 'SYSTEM SUSPEND' call. The state-id field
+is implementation defined on Tegra SoCs and is preferably defined by
+tegra\_def.h.
+
+Tegra configs
+-------------
+
+-  'tegra\_enable\_l2\_ecc\_parity\_prot': This flag enables the L2 ECC and Parity
+   Protection bit, for Arm Cortex-A57 CPUs, during CPU boot. This flag will
+   be enabled by Tegrs SoCs during 'Cluster power up' or 'System Suspend' exit.

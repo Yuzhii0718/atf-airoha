@@ -1,0 +1,75 @@
+/*
+ * Copyright (c) 2021-2026, Renesas Electronics Corporation. All rights reserved.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+#include <stddef.h>
+#include <stdint.h>
+
+#include <drivers/console.h>
+#include <lib/mmio.h>
+#include <lib/utils_def.h>
+#include "scif.h"
+
+/* SCIF/HSCIF */
+#define SCIF_SCFSR_TEND		BIT(6)
+#define SCIF_SCFSR_TDFE		BIT(5)
+#define TRANS_END_CHECK		(SCIF_SCFSR_TEND | SCIF_SCFSR_TDFE)
+
+static uint32_t rcar_putc_fsr;
+static uint32_t rcar_putc_tdr;
+
+static inline void scif_clrbits_16(uintptr_t addr, uint32_t clear)
+{
+	mmio_write_16(addr, mmio_read_16(addr) & ~clear);
+}
+
+static void scif_console_trans_end_poll(uint32_t reg, uint32_t mask)
+{
+	/* Check that transfer of SCIF is completed */
+	while ((mmio_read_16(reg) & mask) != mask)
+		;
+}
+
+static void scif_console_putc_common(uint8_t chr)
+{
+	scif_console_trans_end_poll(rcar_putc_fsr, SCIF_SCFSR_TDFE);
+	mmio_write_8(rcar_putc_tdr, chr);	/* Transfer one character */
+	scif_clrbits_16(rcar_putc_fsr, TRANS_END_CHECK); /* TEND,TDFE clear */
+	scif_console_trans_end_poll(rcar_putc_fsr, TRANS_END_CHECK);
+}
+
+void scif_console_set_regs(uint32_t fsr, uint32_t tdr)
+{
+	rcar_putc_fsr = fsr;
+	rcar_putc_tdr = tdr;
+}
+
+int console_renesas_putc(int c, console_t *pconsole)
+{
+	if (rcar_putc_fsr == 0 || rcar_putc_tdr == 0)
+		return -1;
+
+	if (c == '\n')	/* add 'CR' before 'LF' */
+		scif_console_putc_common('\r');
+
+	scif_console_putc_common(c);
+
+	return c;
+}
+
+static console_t console_renesas_console = {
+	.flags = CONSOLE_FLAG_BOOT,
+	.putc = console_renesas_putc,
+};
+
+void console_renesas_register(uintptr_t baseaddr, uint32_t clock,
+			      uint32_t baud, uint32_t flags)
+{
+	console_renesas_console.base = baseaddr;
+	console_renesas_console.flags = flags;
+
+	console_register(&console_renesas_console);
+	console_renesas_init(baseaddr, clock, baud);
+}

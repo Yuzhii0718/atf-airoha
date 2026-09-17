@@ -1,0 +1,242 @@
+/*
+ * Copyright (c) 2021-2026, Arm Limited. All rights reserved.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+#include <arch.h>
+#include <asm_macros.S>
+#include <common/bl_common.h>
+#include <cortex_a78c.h>
+#include <cpu_macros.S>
+#include <plat_macros.S>
+#include "wa_cve_2022_23960_bhb_vector.S"
+
+/* Hardware handled coherency */
+#if HW_ASSISTED_COHERENCY == 0
+#error "cortex_a78c must be compiled with HW_ASSISTED_COHERENCY enabled"
+#endif
+
+#if WORKAROUND_CVE_2022_23960
+	wa_cve_2022_23960_bhb_vector_table CORTEX_A78C_BHB_LOOP_COUNT, cortex_a78c
+#endif /* WORKAROUND_CVE_2022_23960 */
+
+cpu_reset_prologue cortex_a78c
+
+workaround_reset_start cortex_a78c, ERRATUM(1827430), ERRATA_A78C_1827430
+	/* Disable allocation of splintered pages in the L2 TLB */
+	sysreg_bit_set CORTEX_A78C_CPUECTLR_EL1, CORTEX_A78C_CPUECTLR_EL1_MM_ASP_EN
+workaround_reset_end cortex_a78c, ERRATUM(1827430)
+
+check_erratum_ls cortex_a78c, ERRATUM(1827430), CPU_REV(0, 0)
+
+workaround_reset_start cortex_a78c, ERRATUM(1827440), ERRATA_A78C_1827440
+	/* Force Atomic Store to WB memory be done in L1 data cache */
+	sysreg_bit_set CORTEX_A78C_CPUACTLR2_EL1, BIT(2)
+workaround_reset_end cortex_a78c, ERRATUM(1827440)
+
+check_erratum_ls cortex_a78c, ERRATUM(1827440), CPU_REV(0, 0)
+
+workaround_reset_start cortex_a78c, ERRATUM(1941499), ERRATA_A78C_1941499
+	sysreg_bit_set CORTEX_A78C_CPUECTLR_EL1, BIT(8)
+workaround_reset_end cortex_a78c, ERRATUM(1941499)
+
+check_erratum_ls cortex_a78c, ERRATUM(1941499), CPU_REV(0, 0)
+
+workaround_reset_start cortex_a78c, ERRATUM(1951501), ERRATA_A78C_1951501
+	ldr x0,=0x0
+	msr s3_6_c15_c8_0, x0
+	ldr x0, =0x10e3900002
+	msr s3_6_c15_c8_2, x0
+	ldr x0, =0x10fff00083
+	msr s3_6_c15_c8_3, x0
+	ldr x0, =0x2001003ff
+	msr s3_6_c15_c8_1, x0
+
+	ldr x0,=0x1
+	msr s3_6_c15_c8_0, x0
+	ldr x0, =0x10e3800082
+	msr s3_6_c15_c8_2, x0
+	ldr x0, =0x10fff00083
+	msr s3_6_c15_c8_3, x0
+	ldr x0, =0x2001003ff
+	msr s3_6_c15_c8_1, x0
+
+	ldr x0, =0x2
+	msr s3_6_c15_c8_0, x0
+	ldr x0, =0x10e3800200
+	msr s3_6_c15_c8_2, x0
+	ldr x0, =0x10fff003e0
+	msr s3_6_c15_c8_3, x0
+	ldr x0, =0x2001003ff
+	msr s3_6_c15_c8_1, x0
+workaround_reset_end cortex_a78c, ERRATUM(1951501)
+
+check_erratum_ls cortex_a78c, ERRATUM(1951501), CPU_REV(0, 0)
+
+workaround_reset_start cortex_a78c, ERRATUM(2242638), ERRATA_A78C_2242638
+	ldr	x0, =0x5
+	msr	CORTEX_A78C_IMP_CPUPSELR_EL3, x0
+	ldr	x0, =0x10F600E000
+	msr	CORTEX_A78C_IMP_CPUPOR_EL3, x0
+	ldr	x0, =0x10FF80E000
+	msr	CORTEX_A78C_IMP_CPUPMR_EL3, x0
+	ldr	x0, =0x80000000003FF
+	msr	CORTEX_A78C_IMP_CPUPCR_EL3, x0
+workaround_reset_end cortex_a78c, ERRATUM(2242638)
+
+check_erratum_range cortex_a78c, ERRATUM(2242638), CPU_REV(0, 1), CPU_REV(0, 2)
+
+workaround_reset_start cortex_a78c, ERRATUM(2376746), ERRATA_A78C_2376746
+	sysreg_bit_set CORTEX_A78C_CPUACTLR2_EL1, BIT(0)
+workaround_reset_end cortex_a78c, ERRATUM(2376746)
+
+check_erratum_chosen cortex_a78c, ERRATUM(2376746), ERRATA_A78C_2376746
+
+workaround_reset_start cortex_a78c, ERRATUM(2376749), ERRATA_A78C_2376749
+	sysreg_bit_set CORTEX_A78C_CPUACTLR2_EL1, CORTEX_A78C_CPUACTLR2_EL1_BIT_0
+workaround_reset_end cortex_a78c, ERRATUM(2376749)
+
+check_erratum_range cortex_a78c, ERRATUM(2376749), CPU_REV(0, 1), CPU_REV(0, 2)
+
+workaround_reset_start cortex_a78c, ERRATUM(2395407), ERRATA_A78C_2395407
+	sysreg_bit_set CORTEX_A78C_CPUACTLR2_EL1, BIT(40)
+workaround_reset_end cortex_a78c, ERRATUM(2395407)
+
+check_erratum_chosen cortex_a78c, ERRATUM(2395407), ERRATA_A78C_2395407
+
+workaround_reset_start cortex_a78c, ERRATUM(2395411), ERRATA_A78C_2395411
+	sysreg_bit_set CORTEX_A78C_CPUACTLR2_EL1, CORTEX_A78C_CPUACTLR2_EL1_BIT_40
+workaround_reset_end cortex_a78c, ERRATUM(2395411)
+
+check_erratum_range cortex_a78c, ERRATUM(2395411), CPU_REV(0, 1), CPU_REV(0, 2)
+
+workaround_reset_start cortex_a78c, ERRATUM(2478780), ERRATA_A78C_2478780
+	ldr x0, =0x3
+	msr s3_6_c15_c8_0, x0
+	ldr x0, =0xee010f10
+	msr s3_6_c15_c8_2, x0
+	ldr x0, =0xff1f0ffe
+	msr s3_6_c15_c8_3, x0
+	ldr x0, =0x100000004003ff
+	msr s3_6_c15_c8_1, x0
+	isb
+workaround_reset_end cortex_a78c, ERRATUM(2478780)
+
+check_erratum_chosen cortex_a78c, ERRATUM(2478780), ERRATA_A78C_2478780
+
+workaround_reset_start cortex_a78c, ERRATUM(2683027), ERRATA_A78C_2683027
+	ldr	x0, =0x3
+	msr	CORTEX_A78C_IMP_CPUPSELR_EL3, x0
+	ldr	x0, =0xEE010F10
+	msr	CORTEX_A78C_IMP_CPUPOR_EL3, x0
+	ldr	x0, =0xFF1F0FFE
+	msr	CORTEX_A78C_IMP_CPUPMR_EL3, x0
+	ldr	x0, =0x100000004003FF
+	msr	CORTEX_A78C_IMP_CPUPCR_EL3, x0
+workaround_reset_end cortex_a78c, ERRATUM(2683027)
+
+check_erratum_range cortex_a78c, ERRATUM(2683027), CPU_REV(0, 1), CPU_REV(0, 2)
+
+workaround_reset_start cortex_a78c, ERRATUM(2743232), ERRATA_A78C_2743232
+	/* Set CPUACTLR5_EL1[56:55] to 2'b01 */
+	sysreg_lazy_start CORTEX_A78C_ACTLR5_EL1
+	sysreg_lazy_set BIT(55)
+	sysreg_lazy_clear BIT(56)
+	sysreg_lazy_commit CORTEX_A78C_ACTLR5_EL1
+workaround_reset_end cortex_a78c, ERRATUM(2743232)
+
+check_erratum_range cortex_a78c, ERRATUM(2743232), CPU_REV(0, 1), CPU_REV(0, 2)
+
+workaround_runtime_start cortex_a78c, ERRATUM(2772121), ERRATA_A78C_2772121
+	/* dsb before isb of power down sequence */
+	dsb	sy
+workaround_runtime_end cortex_a78c, ERRATUM(2772121)
+
+check_erratum_ls cortex_a78c, ERRATUM(2772121), CPU_REV(0, 2)
+
+workaround_reset_start cortex_a78c, ERRATUM(2779483), ERRATA_A78C_2779483
+	sysreg_bit_set CORTEX_A78C_ACTLR3_EL1, BIT(47)
+workaround_reset_end cortex_a78c, ERRATUM(2779483)
+
+check_erratum_chosen cortex_a78c, ERRATUM(2779483), ERRATA_A78C_2779483
+
+workaround_reset_start cortex_a78c, ERRATUM(2779484), ERRATA_A78C_2779484
+	sysreg_bit_set CORTEX_A78C_ACTLR3_EL1, BIT(47)
+workaround_reset_end cortex_a78c, ERRATUM(2779484)
+
+check_erratum_range cortex_a78c, ERRATUM(2779484), CPU_REV(0, 1), CPU_REV(0, 2)
+
+workaround_reset_start cortex_a78c, ERRATUM(3888019), ERRATA_A78C_3888019
+	sysreg_bit_set CORTEX_A78C_CPUACTLR2_EL1, BIT(22)
+workaround_reset_end cortex_a78c, ERRATUM(3888019)
+
+check_erratum_chosen cortex_a78c, ERRATUM(3888019), ERRATA_A78C_3888019
+
+workaround_reset_start cortex_a78c, ERRATUM(4302974), ERRATA_A78C_4302974
+	sysreg_bit_set CORTEX_A78C_ACTLR5_EL1, BIT(50)
+workaround_reset_end cortex_a78c, ERRATUM(4302974)
+
+check_erratum_chosen cortex_a78c, ERRATUM(4302974), ERRATA_A78C_4302974
+
+check_erratum_chosen cortex_a78c, CVE(2022, 23960), WORKAROUND_CVE_2022_23960
+
+workaround_reset_start cortex_a78c, CVE(2022, 23960), WORKAROUND_CVE_2022_23960
+#if IMAGE_BL31
+	/*
+	 * The Cortex-A78c generic vectors are overridden to apply errata
+	 * mitigation on exception entry from lower ELs.
+	 */
+	override_vector_table wa_cve_vbar_cortex_a78c
+#endif /* IMAGE_BL31 */
+workaround_reset_end cortex_a78c, CVE(2022, 23960)
+
+/* Disable hardware page aggregation. Enables mitigation for `CVE-2024-5660` */
+workaround_reset_start cortex_a78c, CVE(2024, 5660), WORKAROUND_CVE_2024_5660
+	sysreg_bit_set CORTEX_A78C_CPUECTLR_EL1, BIT(46)
+workaround_reset_end cortex_a78c, CVE(2024, 5660)
+
+check_erratum_chosen cortex_a78c, CVE(2024, 5660), WORKAROUND_CVE_2024_5660
+
+cpu_reset_func_start cortex_a78c
+cpu_reset_func_end cortex_a78c
+
+	/* ----------------------------------------------------
+	 * HW will do the cache maintenance while powering down
+	 * ----------------------------------------------------
+	 */
+func cortex_a78c_core_pwr_dwn
+	/* ---------------------------------------------------
+	 * Enable CPU power down bit in power control register
+	 * ---------------------------------------------------
+	 */
+	sysreg_bit_set CORTEX_A78C_CPUPWRCTLR_EL1, CORTEX_A78C_CPUPWRCTLR_EL1_CORE_PWRDN_EN_BIT
+
+	apply_erratum cortex_a78c, ERRATUM(2772121), ERRATA_A78C_2772121
+
+	isb
+	ret
+endfunc cortex_a78c_core_pwr_dwn
+
+	/* ---------------------------------------------
+	 * This function provides cortex_a78c specific
+	 * register information for crash reporting.
+	 * It needs to return with x6 pointing to
+	 * a list of register names in ascii and
+	 * x8 - x15 having values of registers to be
+	 * reported.
+	 * ---------------------------------------------
+	 */
+.section .rodata.cortex_a78c_regs, "aS"
+cortex_a78c_regs:  /* The ascii list of register names to be reported */
+	.asciz	"cpuectlr_el1", ""
+
+func cortex_a78c_cpu_reg_dump
+	adr	x6, cortex_a78c_regs
+	mrs	x8, CORTEX_A78C_CPUECTLR_EL1
+	ret
+endfunc cortex_a78c_cpu_reg_dump
+
+declare_cpu_ops cortex_a78c, CORTEX_A78C_MIDR, \
+	cortex_a78c_reset_func, \
+	cortex_a78c_core_pwr_dwn

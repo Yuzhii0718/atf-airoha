@@ -1,0 +1,16 @@
+[submodule "libtl"]
+	path = contrib/libtl
+	url = https://review.trustedfirmware.org/shared/transfer-list-library
+	shallow = true
+[submodule "libeventlog"]
+	path = contrib/libeventlog
+	url = https://review.trustedfirmware.org/shared/libEventLog
+	shallow = true
+[submodule "contrib/libtpm"]
+	path = contrib/libtpm
+	url = https://review.trustedfirmware.org/shared/libTPM
+	shallow = true
+[submodule "mbed-tls"]
+	path = contrib/mbed-tls
+	url = https://github.com/Mbed-TLS/mbedtls.git
+	shallow = true

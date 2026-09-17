@@ -1,0 +1,460 @@
+/*
+ * Copyright (c) 2015-2026, Arm Limited and Contributors. All rights reserved.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+#include <assert.h>
+#include <string.h>
+
+#include <platform_def.h>
+
+#include <arch_features.h>
+#include <arch_helpers.h>
+#include <common/bl_common.h>
+#include <common/debug.h>
+#include <common/desc_image_load.h>
+#include <drivers/generic_delay_timer.h>
+#include <drivers/partition/partition.h>
+#include <lib/fconf/fconf.h>
+#include <lib/fconf/fconf_dyn_cfg_getter.h>
+#include <lib/gpt_rme/gpt_rme.h>
+#if TRANSFER_LIST
+#include <transfer_list.h>
+#endif
+#ifdef SPD_opteed
+#include <lib/optee_utils.h>
+#endif
+#include <lib/utils.h>
+#include <plat/arm/common/plat_arm.h>
+#include <plat/common/platform.h>
+
+/* Data structure which holds the extents of the trusted SRAM for BL2 */
+static meminfo_t bl2_tzram_layout __aligned(CACHE_WRITEBACK_GRANULE);
+
+/* Base address of fw_config received from BL1 */
+static uintptr_t config_base __unused;
+
+#if ARM_GPT_SUPPORT
+// FIXME: should be removed once the transfer list version is updated
+#define TL_TAG_GPT_ERROR_INFO	0x109
+
+/*
+ * Inform the GPT corruption to BL32.
+ */
+static void arm_set_gpt_corruption(uintptr_t gpt_corrupted_info_ptr, uint8_t flags)
+{
+	*(uint8_t *)gpt_corrupted_info_ptr |= flags;
+}
+
+static void arm_get_gpt_corruption(uintptr_t log_address, uint8_t gpt_corrupted_info)
+{
+#if TRANSFER_LIST
+	/* Convey this information to BL2 via its TL. */
+	struct transfer_list_entry *te = transfer_list_add(
+		(struct transfer_list_header *)log_address,
+		TL_TAG_GPT_ERROR_INFO,
+		sizeof(gpt_corrupted_info),
+		(void *)&gpt_corrupted_info);
+	if (te == NULL) {
+		ERROR("Failed to log GPT corruption info in transfer list\n");
+	}
+#endif /* TRANSFER_LIST */
+}
+
+static struct plat_log_gpt_corrupted arm_log_gpt_corruption = {
+	.gpt_corrupted_info = 0U,
+	.plat_set_gpt_corruption = arm_set_gpt_corruption,
+	.plat_log_gpt_corruption = arm_get_gpt_corruption,
+};
+#endif /* ARM_GPT_SUPPORT */
+
+/*
+ * Check that BL2_BASE is above ARM_FW_CONFIG_LIMIT. This reserved page is
+ * for `meminfo_t` data structure and fw_configs passed from BL1.
+ */
+#if TRANSFER_LIST
+CASSERT(BL2_BASE >= PLAT_ARM_EL3_FW_HANDOFF_BASE + PLAT_ARM_FW_HANDOFF_SIZE,
+	assert_bl2_base_overflows);
+#elif !RESET_TO_BL2
+CASSERT(BL2_BASE >= ARM_FW_CONFIG_LIMIT, assert_bl2_base_overflows);
+#endif /* TRANSFER_LIST */
+
+/* Weak definitions may be overridden in specific ARM standard platform */
+#pragma weak bl2_early_platform_setup2
+#pragma weak bl2_platform_setup
+#pragma weak bl2_plat_arch_setup
+#pragma weak bl2_plat_sec_mem_layout
+
+#define MAP_BL2_TOTAL		MAP_REGION_FLAT(			\
+					bl2_tzram_layout.total_base,	\
+					bl2_tzram_layout.total_size,	\
+					MT_MEMORY | MT_RW | EL3_PAS)
+
+#pragma weak arm_bl2_plat_handle_post_image_load
+
+struct transfer_list_header *secure_tl __unused;
+
+/*******************************************************************************
+ * BL1 has passed the extents of the trusted SRAM that should be visible to BL2
+ * in x0. This memory layout is sitting at the base of the free trusted SRAM.
+ * Copy it to a safe location before its reclaimed by later BL2 functionality.
+ ******************************************************************************/
+void arm_bl2_early_platform_setup(u_register_t arg0, u_register_t arg1,
+				  u_register_t arg2, u_register_t arg3)
+{
+	struct transfer_list_entry *te __unused;
+	int __maybe_unused ret;
+
+	/* Initialize the console to provide early debug support */
+	arm_console_boot_init();
+
+#if RESET_TO_BL2
+	/*
+	 * Allow BL2 to see the whole Trusted RAM. This is determined
+	 * statically since we cannot rely on BL1 passing this information
+	 * in the RESET_TO_BL2 case.
+	 */
+	bl2_tzram_layout.total_base = ARM_BL_RAM_BASE;
+	bl2_tzram_layout.total_size = ARM_BL_RAM_SIZE;
+#else /* !RESET_TO_BL2 */
+#if TRANSFER_LIST
+	secure_tl = (struct transfer_list_header *)arg3;
+
+	te = transfer_list_find(secure_tl, TL_TAG_SRAM_LAYOUT);
+	assert(te != NULL);
+
+	bl2_tzram_layout = *(meminfo_t *)transfer_list_entry_data(te);
+	transfer_list_rem(secure_tl, te);
+#else /* !TRANSFER_LIST */
+	config_base = (uintptr_t)arg0;
+
+	/* Setup the BL2 memory layout */
+	bl2_tzram_layout = *(meminfo_t *)arg1;
+#endif /* TRANSFER_LIST */
+#endif /* RESET_TO_BL2 */
+
+	/* Initialise the IO layer and register platform IO devices */
+	plat_arm_io_setup();
+
+	/* Load partition table */
+#if ARM_GPT_SUPPORT
+	plat_setup_log_gpt_corrupted(&arm_log_gpt_corruption);
+
+	ret = gpt_partition_init();
+	if (ret != 0) {
+		ERROR("GPT partition initialisation failed!\n");
+		panic();
+	}
+
+#if TRANSFER_LIST && !RESET_TO_BL2
+	plat_log_gpt_ptr->plat_log_gpt_corruption((uintptr_t)secure_tl,
+						   plat_log_gpt_ptr->gpt_corrupted_info);
+#endif	/* TRANSFER_LIST */
+
+#endif /* ARM_GPT_SUPPORT */
+}
+
+void bl2_early_platform_setup2(u_register_t arg0, u_register_t arg1,
+			       u_register_t arg2, u_register_t arg3)
+{
+	arm_bl2_early_platform_setup(arg0, arg1, arg2, arg3);
+
+#if RESET_TO_BL2 && !defined(HW_ASSISTED_COHERENCY)
+	/*
+	 * Initialize Interconnect for this cluster during cold boot.
+	 * No need for locks as no other CPU is active.
+	 */
+	plat_arm_interconnect_init();
+
+	/* Enable Interconnect coherency for the primary CPU's cluster. */
+	plat_arm_interconnect_enter_coherency();
+#endif
+	generic_delay_timer_init();
+}
+
+#if ARM_FW_CONFIG_LOAD_ENABLE && !TRANSFER_LIST
+/********************************************************************************
+ * FW CONFIG load function for BL2 when RESET_TO_BL2=1 &&
+ * ARM_FW_CONFIG_LOAD_ENABLE=1
+ *******************************************************************************/
+static void arm_bl2_plat_config_load(void)
+{
+	int ret;
+	const struct dyn_cfg_dtb_info_t *fw_config_info;
+
+	/* Set global DTB info for fixed fw_config information */
+	set_config_info(ARM_FW_CONFIG_BASE, ~0UL, ARM_FW_CONFIG_MAX_SIZE,
+			FW_CONFIG_ID);
+
+	/*
+	 * Fill the device tree information struct with the info from the
+	 * config dtb
+	 */
+	ret = fconf_load_config(FW_CONFIG_ID);
+	if (ret < 0) {
+		ERROR("Loading of FW_CONFIG failed %d\n", ret);
+		plat_error_handler(ret);
+	}
+
+	/*
+	 * FW_CONFIG loaded successfully. Check the FW_CONFIG device tree parsing
+	 * is successful.
+	 */
+	fw_config_info = FCONF_GET_PROPERTY(dyn_cfg, dtb, FW_CONFIG_ID);
+	if (fw_config_info == NULL) {
+		ret = -1;
+		ERROR("Invalid FW_CONFIG address\n");
+		plat_error_handler(ret);
+	}
+	ret = fconf_populate_dtb_registry(fw_config_info->config_addr);
+	if (ret < 0) {
+		ERROR("Parsing of FW_CONFIG failed %d\n", ret);
+		plat_error_handler(ret);
+	}
+}
+#endif /* ARM_FW_CONFIG_LOAD_ENABLE && !TRANSFER_LIST */
+
+/*
+ * Perform  BL2 preload setup. Currently we initialise the dynamic
+ * configuration here.
+ */
+void bl2_plat_preload_setup(void)
+{
+#if ARM_GPT_SUPPORT && !PSA_FWU_SUPPORT
+	/*
+	 * Find FIP in GPT before FW Config load.
+	 * Always use the FIP from bank 0
+	 */
+	arm_set_fip_addr(0U);
+#endif /* ARM_GPT_SUPPORT && !PSA_FWU_SUPPORT */
+
+#if TRANSFER_LIST
+/* Assume the secure TL hasn't been initialised if BL2 is running at EL3. */
+#if RESET_TO_BL2
+	secure_tl = transfer_list_ensure((void *)PLAT_ARM_EL3_FW_HANDOFF_BASE,
+					 PLAT_ARM_FW_HANDOFF_SIZE);
+
+	if (secure_tl == NULL) {
+		ERROR("Secure transfer list initialisation failed!\n");
+		panic();
+	}
+#endif /* RESET_TO_BL2 */
+	arm_transfer_list_dyn_cfg_init(secure_tl);
+#else /* !TRANSFER_LIST */
+#if ARM_FW_CONFIG_LOAD_ENABLE
+	arm_bl2_plat_config_load();
+#endif /* ARM_FW_CONFIG_LOAD_ENABLE */
+	arm_bl2_dyn_cfg_init();
+#endif /* TRANSFER_LIST */
+
+}
+
+/*
+ * Perform ARM standard platform setup.
+ */
+void arm_bl2_platform_setup(void)
+{
+	/* Initialize the secure environment */
+	if (!is_feat_rme_supported()) {
+		plat_arm_security_setup();
+	}
+
+#if defined(PLAT_ARM_MEM_PROT_ADDR)
+	arm_nor_psci_do_static_mem_protect();
+#endif
+}
+
+void bl2_platform_setup(void)
+{
+	arm_bl2_platform_setup();
+}
+
+/*******************************************************************************
+ * Perform the very early platform specific architectural setup here.
+ * When RME is enabled the secure environment is initialised before
+ * initialising and enabling Granule Protection.
+ * This function initialises the MMU in a quick and dirty way.
+ ******************************************************************************/
+static void arm_bl2_plat_arch_setup(void)
+{
+#if USE_COHERENT_MEM
+	/* Ensure ARM platforms don't use coherent memory in BL2. */
+	assert((BL_COHERENT_RAM_END - BL_COHERENT_RAM_BASE) == 0U);
+#endif
+
+	const mmap_region_t bl_regions[] = {
+		MAP_BL2_TOTAL,
+		ARM_MAP_BL_RO,
+#if USE_ROMLIB
+		ARM_MAP_ROMLIB_CODE,
+		ARM_MAP_ROMLIB_DATA,
+#endif
+#if !TRANSFER_LIST
+		ARM_MAP_BL_CONFIG_REGION,
+#endif /* TRANSFER_LIST */
+#if ENABLE_FEAT_RME
+		ARM_MAP_L0_GPT_REGION,
+#endif
+		{ 0 }
+	};
+
+	/* Initialise the secure environment */
+	if (is_feat_rme_supported()) {
+		plat_arm_security_setup();
+	}
+
+	setup_page_tables(bl_regions, plat_arm_get_mmap());
+
+#ifdef __aarch64__
+	/* BL2 runs at EL3 incase of RESET_TO_BL2 or ENABLE_FEAT_RME is set */
+#if BL2_RUNS_AT_EL3
+	enable_mmu_el3(0);
+#else
+	enable_mmu_el1(0);
+#endif /* BL2_RUNS_AT_EL3 */
+
+	/* Initialise and enable granule protection after MMU. */
+	if (is_feat_rme_supported()) {
+		arm_gpt_setup();
+	}
+
+#else /* !__aarch64__ */
+	enable_mmu_svc_mon(0);
+#endif /* __aarch64__ */
+
+	arm_setup_romlib();
+}
+
+void bl2_plat_arch_setup(void)
+{
+	const struct dyn_cfg_dtb_info_t *tb_fw_config_info __unused;
+	struct transfer_list_entry *te __unused;
+
+	arm_bl2_plat_arch_setup();
+
+#if TRANSFER_LIST
+#if CRYPTO_SUPPORT
+	te = arm_transfer_list_set_heap_info(secure_tl);
+	transfer_list_rem(secure_tl, te);
+#endif /* CRYPTO_SUPPORT */
+#else
+
+	/*
+	 * In case of RESET_TO_BL2 bl2_plat_preload_setup handles loading
+	 * FW_CONFIG when ARM_FW_CONFIG_LOAD_ENABLE=1
+	 */
+#if !RESET_TO_BL2
+	/* Fill the properties struct with the info from the config dtb */
+	fconf_populate("FW_CONFIG", config_base);
+
+	/* TB_FW_CONFIG was also loaded by BL1 */
+	tb_fw_config_info = FCONF_GET_PROPERTY(dyn_cfg, dtb, TB_FW_CONFIG_ID);
+	assert(tb_fw_config_info != NULL);
+
+	fconf_populate("TB_FW", tb_fw_config_info->config_addr);
+#endif /* !RESET_TO_BL2 */
+#endif /* TRANSFER_LIST */
+}
+
+int arm_bl2_handle_post_image_load(unsigned int image_id)
+{
+	int err = 0;
+	bl_mem_params_node_t *bl_mem_params = get_bl_mem_params_node(image_id);
+#ifdef SPD_opteed
+	bl_mem_params_node_t *pager_mem_params = NULL;
+	bl_mem_params_node_t *paged_mem_params = NULL;
+#endif
+	assert(bl_mem_params != NULL);
+
+	switch (image_id) {
+#ifdef __aarch64__
+	case BL32_IMAGE_ID:
+#ifdef SPD_opteed
+		pager_mem_params = get_bl_mem_params_node(BL32_EXTRA1_IMAGE_ID);
+		assert(pager_mem_params);
+
+		paged_mem_params = get_bl_mem_params_node(BL32_EXTRA2_IMAGE_ID);
+		assert(paged_mem_params);
+
+		err = parse_optee_header(&bl_mem_params->ep_info,
+				&pager_mem_params->image_info,
+				&paged_mem_params->image_info);
+		if (err != 0) {
+			WARN("OPTEE header parse error.\n");
+		}
+#endif
+		bl_mem_params->ep_info.spsr = arm_get_spsr(BL32_IMAGE_ID);
+		break;
+#endif
+
+	case BL33_IMAGE_ID:
+#if !USE_KERNEL_DT_CONVENTION
+		/* BL33 expects to receive the primary CPU MPID (through r0) */
+		bl_mem_params->ep_info.args.arg0 = 0xffff & read_mpidr();
+#endif /* !USE_KERNEL_DT_CONVENTION */
+		bl_mem_params->ep_info.spsr = arm_get_spsr(BL33_IMAGE_ID);
+		break;
+
+#ifdef SCP_BL2_BASE
+	case SCP_BL2_IMAGE_ID:
+		/* The subsequent handling of SCP_BL2 is platform specific */
+		err = plat_arm_bl2_handle_scp_bl2(&bl_mem_params->image_info);
+		if (err) {
+			WARN("Failure in platform-specific handling of SCP_BL2 image.\n");
+		}
+		break;
+#endif
+	default:
+		/* Do nothing in default case */
+		break;
+	}
+
+	return err;
+}
+
+/*******************************************************************************
+ * This function can be used by the platforms to update/use image
+ * information for given `image_id`.
+ ******************************************************************************/
+int arm_bl2_plat_handle_post_image_load(unsigned int image_id)
+{
+#if defined(SPD_spmd) && BL2_ENABLE_SP_LOAD
+	/* For Secure Partitions we don't need post processing */
+	if ((image_id >= (MAX_NUMBER_IDS - MAX_SP_IDS)) &&
+		(image_id < MAX_NUMBER_IDS)) {
+		return 0;
+	}
+#endif
+
+#if TRANSFER_LIST
+	if (image_id == HW_CONFIG_ID || image_id == TOS_FW_CONFIG_ID) {
+		/*
+		 * Refresh the now stale checksum following loading of
+		 * HW_CONFIG or TOS_FW_CONFIG into the TL.
+		 */
+		transfer_list_update_checksum(secure_tl);
+	}
+#endif /* TRANSFER_LIST */
+
+	return arm_bl2_handle_post_image_load(image_id);
+}
+
+void arm_bl2_setup_next_ep_info(bl_mem_params_node_t *next_param_node)
+{
+	entry_point_info_t *ep __unused;
+
+#if TRANSFER_LIST
+	/*
+	 * Information might have been added to the TL before this (i.e. event log)
+	 * make sure the checksum is up to date.
+	 */
+	transfer_list_update_checksum(secure_tl);
+
+	ep = transfer_list_set_handoff_args(secure_tl,
+					    &next_param_node->ep_info);
+	assert(ep != NULL);
+
+	arm_transfer_list_populate_ep_info(next_param_node, secure_tl);
+#endif
+}

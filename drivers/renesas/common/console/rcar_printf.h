@@ -1,0 +1,14 @@
+/*
+ * Copyright (c) 2015-2026, Renesas Electronics Corporation. All rights reserved.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+#ifndef RCAR_PRINTF_H
+#define RCAR_PRINTF_H
+
+#include <string.h>
+
+int32_t renesas_log_init(void);
+
+#endif /* RCAR_PRINTF_H */
