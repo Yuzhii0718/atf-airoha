@@ -39,6 +39,8 @@
 /* Prevent mbed TLS from using snprintf so that it can use tf_snprintf. */
 #define MBEDTLS_PLATFORM_SNPRINTF_ALT
 
+#define MBEDTLS_PKCS5_C
+
 #define MBEDTLS_PKCS1_V21
 
 #define MBEDTLS_ASN1_PARSE_C

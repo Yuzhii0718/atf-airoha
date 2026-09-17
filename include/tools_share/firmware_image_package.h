@@ -107,4 +107,74 @@ typedef struct fip_toc_entry {
 	uint64_t	flags;
 } fip_toc_entry_t;
 
+#define BYPASS_FWUPGRADE	(1 << 0)
+#define ARM_SECURE_BOOT_FLASH_KEY	(1 << 2)
+
+#define FW_ENCRYPTION		(1 << 0)
+
+#define SECURE_VAILD		(1 << 0)
+#define HASH_MODE_SHA256	(0x0)
+#define HASH_MODE_SHA512	(0x1)
+#define ENC_MODE_AES128		(0x0)
+#define ENC_MODE_AES256		(0x1)
+
+
+#define KEY_SIZE_256		(32)
+#define KEY_SIZE_128		(16)
+#define FILE_SIZE_SHA256	(32)
+#define FILE_SIZE_SHA512	(64)
+#define ROTPK_HEADER_LEN	(19)
+
+#ifdef TCSUPPORT_CPU_AN7583
+typedef struct secure_efuse {
+	/* from page1 */
+	uint16_t vaild				:1;
+	uint16_t hash_mode			:2;
+	uint16_t enc_mode			:2;
+	uint16_t anti_rb_en			:1;
+	uint16_t anti_rb_mode		:1;
+	uint16_t multi_boot			:1;
+	uint16_t multi_boot_remark	:1;
+	uint16_t asic_mode			:1;
+	uint16_t dual_key			:1;
+	uint16_t hw_bypass			:1;
+	uint16_t hw_bypass_remark	:1;
+	uint16_t reserved1			:3;
+	uint8_t anti_rollback[8];
+	uint8_t huk[16];  
+	uint16_t reserved2;
+	
+	/* from page2 */	
+	uint8_t rotpk[64];
+	uint8_t ssk[32];
+	uint8_t rotpk_dual[64];
+	uint8_t ssk_dual[32];
+	uint8_t huk_dual[16];
+} secure_efuse_t __attribute__((aligned(sizeof(uint32_t))));
+#elif TCSUPPORT_CPU_AN7552
+typedef struct secure_efuse {
+	uint32_t vaild				:1;
+	uint32_t asic_mode			:1;
+	uint32_t reserved			:30;
+	uint8_t rotpk[32];
+	uint8_t ssk[16];
+} secure_efuse_t;
+#else 
+typedef struct secure_efuse {
+	uint32_t vaild				:1;
+	uint32_t hash_mode			:2;
+	uint32_t enc_mode			:2;
+	uint32_t freq_by_efuse		:1;
+	uint32_t freq_sel			:1;
+	uint32_t into_inic			:1;
+	uint32_t asic_mode			:1;
+	uint32_t reserved1			:23;
+	uint32_t reserved[3];
+	uint8_t rotpk[64];
+	uint8_t ssk[32];
+	uint8_t huk[16];
+	uint8_t ek[32];
+} secure_efuse_t;
+#endif
+
 #endif /* FIRMWARE_IMAGE_PACKAGE_H */
