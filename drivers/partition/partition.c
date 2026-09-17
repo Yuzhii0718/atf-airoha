@@ -231,6 +231,7 @@ static int load_partition_gpt(uintptr_t image_handle, gpt_header_t header)
 	int result;
 	unsigned int i;
 	uint32_t calc_crc = 0U;
+	int cnt = 0;
 
 	result = io_seek(image_handle, IO_SEEK_SET, gpt_entry_offset);
 	if (result != 0) {
@@ -247,24 +248,21 @@ static int load_partition_gpt(uintptr_t image_handle, gpt_header_t header)
 			return result;
 		}
 
-		result = parse_gpt_entry(&entry, &list.list[i]);
-		if (result != 0) {
-			result = io_seek(image_handle, IO_SEEK_SET,
-					(gpt_entry_offset + (i * sizeof(gpt_entry_t))));
-			if (result != 0) {
-				VERBOSE("Failed to seek (%i)\n", result);
-				return result;
-			}
-			break;
-		}
-
 		/*
 		 * Calculate CRC of Partition entry array to compare with CRC
 		 * value in header
 		 */
 		calc_crc = tf_crc32(calc_crc, (uint8_t *)&entry, sizeof(gpt_entry_t));
+
+		result = parse_gpt_entry(&entry, &list.list[cnt]);
+		if (result != 0) {
+			/* unused gpt entry */
+			continue;
+		}
+
+		cnt++;
 	}
-	if (i == 0) {
+	if (cnt == 0) {
 		VERBOSE("No Valid GPT Entries found\n");
 		return -EINVAL;
 	}
@@ -273,7 +271,7 @@ static int load_partition_gpt(uintptr_t image_handle, gpt_header_t header)
 	 * Only records the valid partition number that is loaded from
 	 * partition table.
 	 */
-	list.entry_count = i;
+	list.entry_count = cnt;
 	dump_entries(list.entry_count);
 
 	/*

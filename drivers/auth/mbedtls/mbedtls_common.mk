@@ -64,6 +64,7 @@ LIBMBEDTLS_SRCS		+= $(addprefix ${MBEDTLS_DIR}/library/,		\
 					rsa_alt_helpers.c		\
 					x509.c 				\
 					x509_crt.c 			\
+					pkcs5.c				\
 					)
 
 ifeq (${PSA_CRYPTO},1)
@@ -89,6 +90,7 @@ LIBMBEDTLS_CFLAGS	+=	-Wno-error=redundant-decls
 # algorithm to use. If the variable is not defined, select it based on
 # algorithm used for key generation `KEY_ALG`. If `KEY_ALG` is not defined,
 # then it is set to `rsa`.
+ifeq (${CONFIG_ECNT},)
 ifeq (${TF_MBEDTLS_KEY_ALG},)
     ifeq (${KEY_ALG}, ecdsa)
         TF_MBEDTLS_KEY_ALG		:=	ecdsa
@@ -147,6 +149,20 @@ ifeq (${DECRYPTION_SUPPORT}, aes_gcm)
     TF_MBEDTLS_USE_AES_GCM	:=	1
 else
     TF_MBEDTLS_USE_AES_GCM	:=	0
+endif
+else
+ifeq ($(TCSUPPORT_CPU_AN7583),1)
+	TF_MBEDTLS_KEY_ALG		:=	rsa+ecdsa
+    TF_MBEDTLS_KEY_ALG_ID	:=	TF_MBEDTLS_RSA_AND_ECDSA
+else
+	TF_MBEDTLS_KEY_ALG		:=	rsa
+    TF_MBEDTLS_KEY_ALG_ID	:=	TF_MBEDTLS_RSA
+endif
+	TF_MBEDTLS_KEY_SIZE		:=	4096
+    TF_MBEDTLS_HASH_ALG_ID	:=	TF_MBEDTLS_SHA512
+        TPM_ALG_ID				:=	TPM_ALG_SHA512
+    TCG_DIGEST_SIZE			:=	64
+    TF_MBEDTLS_USE_AES_GCM	:=	1
 endif
 
 # Needs to be set to drive mbed TLS configuration correctly

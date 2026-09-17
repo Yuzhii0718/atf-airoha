@@ -24,7 +24,7 @@
  * established, we can reuse some of the buffers on different stages
  */
 
-static unsigned char fw_config_hash_buf[HASH_DER_LEN];
+[[maybe_unused]] static unsigned char fw_config_hash_buf[HASH_DER_LEN];
 static unsigned char tb_fw_config_hash_buf[HASH_DER_LEN];
 static unsigned char hw_config_hash_buf[HASH_DER_LEN];
 unsigned char tb_fw_hash_buf[HASH_DER_LEN];
@@ -100,6 +100,7 @@ const auth_img_desc_t trusted_boot_fw_cert = {
 				.len = (unsigned int)HASH_DER_LEN
 			}
 		},
+#if !defined(CONFIG_ECNT)
 		[3] = {
 			.type_desc = &fw_config_hash,
 			.data = {
@@ -107,5 +108,6 @@ const auth_img_desc_t trusted_boot_fw_cert = {
 				.len = (unsigned int)HASH_DER_LEN
 			}
 		}
+#endif
 	}
 };
