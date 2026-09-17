@@ -1,0 +1,772 @@
+
+#if defined(IMAGE_BL2) || defined(IMAGE_BL31)
+#include <stdio.h>
+#include <lib/mmio.h>
+#include <drivers/delay_timer.h>
+#include <common/debug.h>
+#else /* UBoot */
+#include <asm/io.h>
+#include <common.h>
+#endif
+#include <ecnt_avs.h>
+#include <asm/tc3162.h>
+#include <ecnt_pkgid.h>
+#include "ecnt_cpufreq.h"
+
+/* cpu frequency adjustment registers */
+#define IO_PHYS				(0x10000000)
+#define MCUCFG_BASE		    (IO_PHYS + 0xEFBE000)
+#define CR_ACLKEN_DIV       (MCUCFG_BASE + 0x640)
+#define CR_MP0_PLL_DIV      (MCUCFG_BASE + 0x7A0)
+#define CR_BUS_PLL_DIV      (MCUCFG_BASE + 0x7C0)
+#define CR_CPU_CLK_GATING	(IO_PHYS + 0xFA201E0)
+#define CR_CHIP_PROBE_MODE  (IO_PHYS + 0xFA20220)
+#define CR_CLK_PROBE_MODE   (IO_PHYS + 0xFA20244)
+#define CR_RGS_ECC_SEL      (IO_PHYS + 0xFA20254)
+#if defined(TCSUPPORT_CPU_AN7583)
+#define CR_PLL_WR_PROTECT   (IO_PHYS + 0xFA20268)
+#define CR_CPUPLL_SDM_PCW   (IO_PHYS + 0xFA202AC)
+#define CR_CPUPLL_SDM_PCW_CHG	(IO_PHYS + 0xFA202B0)
+#define CR_CPUPLL_SDM_SSC_PRD	(IO_PHYS + 0xFA202B8)
+#define PCW_MASK            (0xffU)
+#define PCW_SHIFT           (24)
+#define POSDIV_MASK         (0x7)
+#define POSDIV_SHIFT        (18)
+#define WT_PROTECT_MAGIC    (0x80)
+#elif defined(TCSUPPORT_CPU_EN7581)
+#define CR_PLL_WR_PROTECT   (IO_PHYS + 0xFA20268)
+#define CR_CPUPLL_SDM_PCW   (IO_PHYS + 0xFA202B4)
+#define CR_CPUPLL_SDM_PCW_CHG   (IO_PHYS + 0xFA202B8)
+#define CR_CPUPLL_SDM_SSC_PRD (0) // AN7552 only
+#define PCW_MASK            (0xffU)
+#define PCW_SHIFT           (24)
+#define POSDIV_MASK         (0x7)
+#define POSDIV_SHIFT        (4)
+#define WT_PROTECT_MAGIC    (0x12)
+#elif defined(TCSUPPORT_CPU_AN7552)
+#define CR_PLL_WR_PROTECT   (IO_PHYS + 0xFA20268)
+#define CR_CPUPLL_SDM_PCW   (IO_PHYS + 0xFA202AC)
+#define CR_CPUPLL_SDM_PCW_CHG   (IO_PHYS + 0xFA202B0)
+#define CR_CPUPLL_SDM_SSC_PRD   (IO_PHYS + 0xFA202B8)
+#define PCW_MASK            (0xffU)
+#define PCW_SHIFT           (24)
+#define POSDIV_MASK         (0x7)
+#define POSDIV_SHIFT        (18)
+#define WT_PROTECT_MAGIC    (0x80)
+#else /* 7523 */
+#define CR_PLL_WR_PROTECT   (IO_PHYS + 0xFA20264)
+#define CR_SYSPLL_PCW_25M   (IO_PHYS + 0xFA202A8)
+#define CR_SYSPLL_PCW_20M   (IO_PHYS + 0xFA202AC)
+#define CR_SYSPLL_DISABLE   (IO_PHYS + 0xFA202B0)
+#define XTAL_MASK           (0x7f)
+#define XTAL_SHIFT          (24)
+#define WT_PROTECT_MAGIC    (0x80)
+#endif
+
+#if defined(IMAGE_BL2) || defined(IMAGE_BL31)
+#define	writeReg(reg, data) mmio_write_32(reg, data)
+#define readReg(reg)        mmio_read_32(reg)
+#else /* UBoot */
+#define VPint   *(volatile unsigned int *)
+#define	writeReg(reg, data)	(VPint(reg) = data)
+#define	readReg(reg)		(VPint(reg))
+#endif
+
+#define VAL_0               (0)
+#define VAL_1               (1)
+
+#if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583)
+/* PCW/POSDIV are derived from the target frequency:
+ *   <  1000MHz : posdiv = 1 -> freq = pcw * 25
+ *   >= 1000MHz : posdiv = 0 -> freq = pcw * 50
+ * The 1250~1600MHz entries are the overclocking steps (pcw = freq / 50) and
+ * match what the OpenWrt overclock helper programs into the PLL directly.
+ */
+static unsigned char cpu_freq_config_pcw[]=     { 0x14, 0x16, 0x18, 0x1A, 0x1C, 0x1E, 0x20, 0x22, 0x24, 0x26,
+                                                  0x14, 0x15, 0x16, 0x17, 0x18,
+                                                  0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20};
+static unsigned char cpu_freq_config_posdiv[]=  {VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,
+                                                 VAL_0,VAL_0,VAL_0,VAL_0,VAL_0,
+                                                 VAL_0,VAL_0,VAL_0,VAL_0,VAL_0,VAL_0,VAL_0,VAL_0};
+static char *clk_src_name[]={"xtal(50MHz)","armpll(500~1600MHz)","pll1(540MHz)","pll2(400MHz)"};
+#elif defined(TCSUPPORT_CPU_AN7552)
+static unsigned char cpu_freq_config_pcw[]=     { 0x14, 0x16, 0x18, 0x1A, 0x1C, 0x1E, 0x20, 0x22, 0x24, 0x26, 0x14};
+static unsigned char cpu_freq_config_posdiv[]=  {VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_0};
+static char *clk_src_name[]={"xtal(50MHz)","armpll(500~1000MHz)","pll1(540MHz)","pll2(400MHz)"};
+#else
+/*
+ * SYSPLL PCW values, index == enum e_cpu_freq.
+ *
+ * freq = pcw * xtal / 2  (the non-secure clk-en7523 driver derives the value
+ * with the same formula: pcw = freq * 2 / xtal), so
+ *   25MHz xtal: pcw = freq * 2 / 25  ->  500MHz = 0x28, 950MHz = 0x4c, 1.0GHz = 0x50 ...
+ *   20MHz xtal: pcw = freq * 2 / 20  ->  500MHz = 0x32, 950MHz = 0x5f, 1.0GHz = 0x64 ...
+ * The tables must cover every index the non-secure world may request, i.e.
+ * 500..1200MHz (index 0..14) - the same range the vendor BL31 offers (its
+ * armpll_clk_MHz[]/pcw[]/posdiv[] are 15 entries long, 500..1200MHz).  A
+ * shorter table made the kernel's 1.0GHz request (EN7562CT, index 10) fail
+ * with "ERROR: invalid cpuFreq:10 (valid range: 0~9)" on every OPP update.
+ * Note the 7-bit PCW field caps the 20MHz xtal at 1250MHz, which is why the
+ * overclocking indices (1250MHz and up) are not offered here.
+ */
+static unsigned char cpu_freq_config_xtal25M[]= {0x28, 0x2c, 0x30, 0x34, 0x38, 0x3c, 0x40, 0x44, 0x48, 0x4c,
+                                                 0x50, 0x54, 0x58, 0x5c, 0x60};
+static unsigned char cpu_freq_config_xtal20M[]= {0x32, 0x37, 0x3C, 0x41, 0x46, 0x4B, 0x50, 0x55, 0x5A, 0x5F,
+                                                 0x64, 0x69, 0x6e, 0x73, 0x78};
+static char *clk_src_name[]={"xtal(20/25MHz)","armpll(500~1200MHz)","pll1(540MHz)","pll2(500MHz)"};
+#endif
+//static unsigned int  voltage_config[]         ={ 115,  115,  115,  115,  115,  115,  125,  125,  125,  125};	//YMC mark for new AVS FW
+static unsigned int  armpll_clk_MHz[]         = {  500,  550,  600,  650,  700,  750,  800,  850,  900,  950,
+                                                 1000, 1050, 1100, 1150, 1200,
+                                                 1250, 1300, 1350, 1400, 1450, 1500, 1550, 1600};
+
+/*
+ * Vendor guaranteed maximum CPU frequency. Anything above this is
+ * overclocking: stability depends on the silicon and the cooling, and the AVS
+ * voltage is NOT scaled together with the frequency (AVS_Set() is disabled
+ * under the "YMC mark for new AVS FW" block in en7523_armpll_set()).
+ */
+#define CPU_FREQ_SPEC_MAX_MHZ	(1200U)
+
+static unsigned int clk_divider_config[]={0x0, 0xa, 0xb, 0x1d};
+
+/*
+ * Number of OPP entries that can really be programmed into the ARM PLL.
+ *
+ * Always derive the limit from the real table size, so an out-of-range index
+ * coming from the non-secure world (AVS_OP_FREQ_DYN_ADJ) can never index past
+ * the tables.  It must stay equal to the number of enum e_cpu_freq values the
+ * platform defines (cpu_freq_last), otherwise valid requests coming from
+ * airoha-cpufreq (e.g. 1.0GHz == index 10 on EN7562CT) get rejected.
+ */
+static unsigned int cpu_freq_table_len(void)
+{
+#if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583) || defined(TCSUPPORT_CPU_AN7552)
+	return sizeof(cpu_freq_config_pcw) / sizeof(cpu_freq_config_pcw[0]);
+#else
+	return sizeof(cpu_freq_config_xtal25M) / sizeof(cpu_freq_config_xtal25M[0]);
+#endif
+}
+
+static int is_valid_cpu_freq(enum e_cpu_freq cpuFreq)
+{
+	if ((unsigned int)cpuFreq >= cpu_freq_table_len()) {
+		printf("ERROR: invalid cpuFreq:%d (valid range: 0~%u)\n",
+		       (int)cpuFreq, cpu_freq_table_len() - 1);
+		return 0;
+	}
+
+	return 1;
+}
+
+
+void set_cpu_domain_clk_gating(enum cpu_domain_clk_gating pll, int isEnable)
+{
+    unsigned int val;
+
+    val = readReg(CR_CPU_CLK_GATING);
+	if(isEnable) {
+        val |= ((uint32_t)1 << (int)pll);
+	} else {
+	    val &= (~((uint32_t)1 << (int)pll));
+	}
+    writeReg(CR_CPU_CLK_GATING, val);
+}
+
+enum e_cpu_freq cpu_freq_enum_get(unsigned int armpll_clk)
+{
+    int i;
+
+    for (i=0; i<cpu_freq_last; i++) {
+        if (armpll_clk_MHz[i]==armpll_clk)
+            return i;
+    }
+
+    printf("ERROR: %s for armpll_clk:%d\n", __func__, armpll_clk);
+    return 0;
+}
+
+enum e_div_sel divider_sel_enum_get(unsigned int divider)
+{
+    if (!((divider==1)||(divider==2)||(divider==4)||(divider==6))) {
+        printf("ERROR: %s for divider:%d, should be 1,2,4,6\n", __func__, divider);
+        return 0;
+    }
+
+    if (divider==1)
+        return div_sel_1;
+    else
+        return (divider>>1);
+}
+
+int isXtalClk25M (void)
+{
+    unsigned int val;
+    
+    val = readReg(CR_RGS_ECC_SEL);
+
+    if (val&(1<<19)) /* XTAL==25MHz */
+        return 1;
+    else    /* XTAL==20MHz */
+        return 0;
+}
+
+enum e_clk_src curr_clk_src_enum_get (void)
+{
+    unsigned int val;
+    enum e_clk_src clk_src;
+
+    val = readReg(CR_BUS_PLL_DIV);
+    clk_src = ((val>>9)&0x3);
+
+    return clk_src;
+}
+
+int clk_src_switch (enum e_clk_src clk_src)
+{
+    unsigned int val, mux1sel;
+
+    /* check if clk_src_switch is needed */
+    val = readReg(CR_BUS_PLL_DIV);
+    mux1sel = (val>>9)&0x3;
+    if (mux1sel==clk_src)
+        return 0;
+
+    /* enable clk_src */
+    if (clk_src!=clk_src_xtal) /* src_xtal is always on and can't be disabled, so no need to enable. */
+	    set_cpu_domain_clk_gating((clk_src-1), 1);
+
+    /* set "L2C SRAM interface and MCU_BIU clock divider" as "1/1*CPU Clock" for XTAL or "1/2*CPU Clock" for others */
+    val = readReg(CR_ACLKEN_DIV);
+    val &= (~0x1f);
+#if !defined(TCSUPPORT_CPU_EN7581) && !defined(TCSUPPORT_CPU_AN7552) && !defined(TCSUPPORT_CPU_AN7583)
+    if (clk_src==clk_src_xtal)
+        val |= 0x01;
+    else
+#endif
+        val |= 0x12;
+    writeReg(CR_ACLKEN_DIV, val);
+
+	udelay(1);
+    /* switch to target clk_src */
+    val = readReg(CR_BUS_PLL_DIV);
+    val &= (~(0x3<<9));
+    val |= (clk_src<<9);
+    writeReg(CR_BUS_PLL_DIV, val);
+
+    /* read back to make sure */
+    val = readReg(CR_BUS_PLL_DIV);
+    val = ((val>>9)&0x3);
+    if (val!=clk_src) {
+        printf("ERROR: val:%d != clk_src:%d for %s\n", val, clk_src, clk_src_name[clk_src]);
+        return -1;
+    }
+
+    return 0;
+}
+
+unsigned int curr_clk_divider_get (void)
+{
+    int i;
+    unsigned int val;
+
+    val = readReg(CR_BUS_PLL_DIV);
+    val = ((val>>17)&0x1f);
+
+    for (i=0; i<div_sel_last; i++) {
+        if (clk_divider_config[i]==val) {
+            if (i==0)
+                return 1;
+            else
+                return (i<<1);
+        }
+    }
+
+    if (i==div_sel_last) {
+        printf("ERROR: can't find val:%d for clk_divider_config\n", val);
+    }
+    return 0;
+}
+
+/* if need to adjust armpll, adjust armpll first, then set divider. */
+int clk_divider_sel_set (enum e_div_sel divider_sel)
+{
+    unsigned int val;
+
+    if (divider_sel>=div_sel_last) {
+        printf("ERROR: divider_sel:%d>=div_sel_last\n", divider_sel);
+        return -1;
+    }
+
+    val = readReg(CR_BUS_PLL_DIV);
+    val &= (~(0x1f<<17));
+    val |= (clk_divider_config[divider_sel]<<17);
+    writeReg(CR_BUS_PLL_DIV, val);
+
+    /* read back to make sure */
+    val = readReg(CR_BUS_PLL_DIV);
+    val = ((val>>17)&0x1f);
+    if (val!=clk_divider_config[divider_sel]) {
+        printf("ERROR: val:0x%x != clk_divider_config[%d]:0x%x\n", val, divider_sel, clk_divider_config[divider_sel]);
+        return -1;
+    }
+
+    return 0;
+}
+
+unsigned int curr_armpll_clk_get (void)
+{
+    int i;
+
+#if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583) || defined(TCSUPPORT_CPU_AN7552)
+    unsigned int pcw, posdiv, freq;
+
+    pcw = (((readReg(CR_CPUPLL_SDM_PCW))>>PCW_SHIFT)&PCW_MASK);
+	if(isEN7581)
+		posdiv = (((readReg(CR_CPUPLL_SDM_PCW_CHG))>>POSDIV_SHIFT)&POSDIV_MASK);
+	else
+		posdiv = (((readReg(CR_CPUPLL_SDM_SSC_PRD))>>POSDIV_SHIFT)&POSDIV_MASK);
+
+    if (posdiv==VAL_0)
+        freq = (pcw*50);
+    else if (posdiv==VAL_1)
+        freq = (pcw*25);
+    else {
+		if(isEN7581){
+	        printf("ERROR: can't get armpll due to wrong posdiv:%d (CPUPLL_SDM_PCW:0x%x, CPUPLL_SDM_PCW_CHG:0x%x)\n",
+	                (int)posdiv, readReg(CR_CPUPLL_SDM_PCW), readReg(CR_CPUPLL_SDM_PCW_CHG));
+		}else{
+	        printf("ERROR: can't get armpll due to wrong posdiv:%d (CPUPLL_SDM_PCW:0x%x, CR_CPUPLL_SDM_SSC_PRD:0x%x)\n",
+                (int)posdiv, readReg(CR_CPUPLL_SDM_PCW), readReg(CR_CPUPLL_SDM_SSC_PRD));
+		}
+	
+        return 0;
+    }
+    
+    for (i=0; i<cpu_freq_last; i++) {
+        if (freq == armpll_clk_MHz[i])
+            break;
+    }
+
+    if (i<cpu_freq_last) {
+        return freq;
+    }
+    else {
+		if(isEN7581){
+	        printf("ERROR: can't get armpll due to wrong freq:%d (CPUPLL_SDM_PCW:0x%x, CPUPLL_SDM_PCW_CHG:0x%x)\n",
+	                (int)freq, readReg(CR_CPUPLL_SDM_PCW), readReg(CR_CPUPLL_SDM_PCW_CHG));
+		}else if((isAN7552) || (isAN7583)){
+	        printf("ERROR: can't get armpll due to wrong freq:%d (CPUPLL_SDM_PCW:0x%x, CR_CPUPLL_SDM_SSC_PRD:0x%x)\n",
+	                (int)freq, readReg(CR_CPUPLL_SDM_PCW), readReg(CR_CPUPLL_SDM_SSC_PRD));		
+		}
+		else{
+			printf("Unknown Chip id!\n");
+		}
+        return 0;
+    }
+
+#else
+    unsigned int val, val2;
+    int isXtal25M=0;
+
+    if (isXtalClk25M()) { /* XTAL==25MHz */
+        isXtal25M=1;
+        val = readReg(CR_SYSPLL_PCW_25M);
+        val2 = ((val>>XTAL_SHIFT)&XTAL_MASK);
+        for (i=0; i< (int)cpu_freq_table_len(); i++) {
+            if (val2 == cpu_freq_config_xtal25M[i])
+                break;
+        }
+    }
+    else { /* XTAL==20MHz */
+        val = readReg(CR_SYSPLL_PCW_20M);
+        val2 = ((val>>XTAL_SHIFT)&XTAL_MASK);
+        for (i=0; i< (int)cpu_freq_table_len(); i++) {
+            if (val2 == cpu_freq_config_xtal20M[i])
+                break;
+        }
+    }
+
+    if (i< (int)cpu_freq_table_len())
+        return armpll_clk_MHz[i];
+    else {
+        printf("ERROR: can't get armpll (isXtal25M:%d, SYSPLL_PCW value:0x%x)\n", isXtal25M, val);
+        return 0;
+    }
+#endif
+}
+
+static void configure_armpll(enum e_cpu_freq cpuFreq)
+{
+    unsigned int val;
+
+#if defined(TCSUPPORT_CPU_AN7583)
+	/* set CR_CPUPLL_SDM_PCW[31:24] */
+	val = readReg(CR_CPUPLL_SDM_PCW);
+	val &= (~(PCW_MASK<<PCW_SHIFT));
+	val |= (cpu_freq_config_pcw[cpuFreq]<<PCW_SHIFT);
+	writeReg(CR_CPUPLL_SDM_PCW, val);
+
+	/* set CR_CPUPLL_SDM_SSC_PRD[20:18] (POSDIV) */
+	val = readReg(CR_CPUPLL_SDM_SSC_PRD);
+	val &= (~(POSDIV_MASK<<POSDIV_SHIFT));
+	val |= (cpu_freq_config_posdiv[cpuFreq]<<POSDIV_SHIFT);
+	writeReg(CR_CPUPLL_SDM_SSC_PRD, val);
+
+	/* toggle CPUPLL_SDM_PCW_CHG[0] */
+	val = readReg(CR_CPUPLL_SDM_PCW_CHG);
+	if (val&0x1) val &= (~0x1);
+	else val |= 0x1;
+	writeReg(CR_CPUPLL_SDM_PCW_CHG, val);
+#elif defined(TCSUPPORT_CPU_EN7581)
+    /* set CR_CPUPLL_SDM_PCW[31:24] */
+    val = readReg(CR_CPUPLL_SDM_PCW);
+    val &= (~(PCW_MASK<<PCW_SHIFT));
+    val |= (cpu_freq_config_pcw[cpuFreq]<<PCW_SHIFT);
+    writeReg(CR_CPUPLL_SDM_PCW, val);
+    /* set CPUPLL_SDM_PCW_CHG[6:4] (POSDIV) */
+    val = readReg(CR_CPUPLL_SDM_PCW_CHG);
+    val &= (~(POSDIV_MASK<<POSDIV_SHIFT));
+    val |= (cpu_freq_config_posdiv[cpuFreq]<<POSDIV_SHIFT);
+    /* toggle CPUPLL_SDM_PCW_CHG[0] */
+    if (val&0x1) val &= (~0x1);
+    else val |= 0x1;
+    writeReg(CR_CPUPLL_SDM_PCW_CHG, val);
+#elif defined(TCSUPPORT_CPU_AN7552)
+	/* set CR_CPUPLL_SDM_PCW[31:24] */
+	val = readReg(CR_CPUPLL_SDM_PCW);
+	val &= (~(PCW_MASK<<PCW_SHIFT));
+	val |= (cpu_freq_config_pcw[cpuFreq]<<PCW_SHIFT);
+	writeReg(CR_CPUPLL_SDM_PCW, val);
+	/* set CPUPLL_SDM_PCW_CHG[6:4] (POSDIV) */
+	val = readReg(CR_CPUPLL_SDM_SSC_PRD);
+	val &= (~(POSDIV_MASK<<POSDIV_SHIFT));
+	val |= (cpu_freq_config_posdiv[cpuFreq]<<POSDIV_SHIFT);
+	writeReg(CR_CPUPLL_SDM_SSC_PRD, val);
+	/* toggle CPUPLL_SDM_PCW_CHG[0] */
+	val = readReg(CR_CPUPLL_SDM_PCW_CHG);
+	if (val&0x1) val &= (~0x1);
+	else val |= 0x1;
+	writeReg(CR_CPUPLL_SDM_PCW_CHG, val);
+
+#else /* 7523 */
+    if (isXtalClk25M()) { /* XTAL==25MHz */
+        val = readReg(CR_SYSPLL_PCW_25M);
+        val &= (~(XTAL_MASK<<XTAL_SHIFT));
+        val |= (cpu_freq_config_xtal25M[cpuFreq]<<XTAL_SHIFT);
+        writeReg(CR_SYSPLL_PCW_25M, val);
+    }
+    else { /* XTAL==20MHz */
+        val = readReg(CR_SYSPLL_PCW_20M);
+        val &= (~(XTAL_MASK<<XTAL_SHIFT));
+        val |= (cpu_freq_config_xtal20M[cpuFreq]<<XTAL_SHIFT);
+        writeReg(CR_SYSPLL_PCW_20M, val);
+    }
+
+    /* toggle SYSPLL_SDM_PCW_CHG */
+    val = readReg(CR_SYSPLL_DISABLE);
+    if (val&(1<<3))
+        val &= (~(1<<3));
+    else
+        val |= (1<<3);
+    writeReg(CR_SYSPLL_DISABLE, val);
+#endif
+
+    return;
+}
+
+static int confirm_armpll(enum e_cpu_freq cpuFreq)
+{
+    unsigned int val;
+
+#if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583) || defined(TCSUPPORT_CPU_AN7552)
+    val = (((readReg(CR_CPUPLL_SDM_PCW))>>PCW_SHIFT)&PCW_MASK);
+
+	if (val!=cpu_freq_config_pcw[cpuFreq]) {
+        printf("ERROR(%s): val:0x%x != config_pcw[%d]:0x%x (CR_CPUPLL_SDM_PCW:0x%x)\n", __func__, 
+                val, cpuFreq, cpu_freq_config_pcw[cpuFreq], readReg(CR_CPUPLL_SDM_PCW));
+        return -1;
+    }
+	if(isEN7581){
+    	val = (((readReg(CR_CPUPLL_SDM_PCW_CHG))>>POSDIV_SHIFT)&POSDIV_MASK);
+    	if (val!=cpu_freq_config_posdiv[cpuFreq]) {
+    	    printf("ERROR(%s): val:0x%x != config_posdiv[%d]:0x%x (CR_CPUPLL_SDM_PCW_CHG:0x%x)\n", __func__, 
+    	            val, cpuFreq, cpu_freq_config_posdiv[cpuFreq], readReg(CR_CPUPLL_SDM_PCW_CHG));
+    	    return -1;
+    	}
+	}else if((isAN7552) || (isAN7583))
+	{
+    	val = (((readReg(CR_CPUPLL_SDM_SSC_PRD))>>POSDIV_SHIFT)&POSDIV_MASK);
+    	if (val!=cpu_freq_config_posdiv[cpuFreq]) {
+    	    printf("ERROR(%s): val:0x%x != config_posdiv[%d]:0x%x (CR_CPUPLL_SDM_PCW_CHG:0x%x)\n", __func__, 
+    	            val, cpuFreq, cpu_freq_config_posdiv[cpuFreq], readReg(CR_CPUPLL_SDM_SSC_PRD));
+    	    return -1;
+    	}		
+	}else
+	{
+		printf("Unknown Chip id!\n");
+	}
+#else
+    if (isXtalClk25M()) { /* XTAL==25MHz */
+        val = readReg(CR_SYSPLL_PCW_25M);
+        val = ((val>>XTAL_SHIFT)&XTAL_MASK);
+        if (val!=cpu_freq_config_xtal25M[cpuFreq]) {
+            printf("ERROR: val:0x%x != config_xtal25M[%d]:0x%x\n", val, cpuFreq, cpu_freq_config_xtal25M[cpuFreq]);
+            return -1;
+        }
+    }
+    else { /* XTAL==20MHz */
+        val = readReg(CR_SYSPLL_PCW_20M);
+        val = ((val>>XTAL_SHIFT)&XTAL_MASK);
+        if (val!=cpu_freq_config_xtal20M[cpuFreq]) {
+            printf("ERROR: val:0x%x != config_xtal20M[%d]:0x%x\n", val, cpuFreq, cpu_freq_config_xtal20M[cpuFreq]);
+            return -1;
+        }
+    }
+#endif
+
+    return 0;
+}
+
+int an7552_bootup_clk_src_switch(enum e_cpu_freq cpuFreq)
+{
+    unsigned int val;
+
+    if (!is_valid_cpu_freq(cpuFreq))
+        return -1;
+
+    /* disable PLL Write Protect */
+    val = readReg(CR_PLL_WR_PROTECT);
+    val &= (~0xff);
+    val |= WT_PROTECT_MAGIC;
+    writeReg(CR_PLL_WR_PROTECT, val);
+
+    /* wait for 0.5us at least */
+    udelay(1);
+
+    /* switch to target clk_src */
+    val = readReg(CR_BUS_PLL_DIV);
+    val &= (~(0x3<<9));
+    val |= (clk_src_armpll<<9);
+    writeReg(CR_BUS_PLL_DIV, val);
+
+    /* read back to make sure */
+    val = readReg(CR_BUS_PLL_DIV);
+    val = ((val>>9)&0x3);
+    if (val!=clk_src_armpll) {
+        printf("ERROR: val:%d != clk_src:%d for %s\n", val, cpuFreq, clk_src_name[cpuFreq]);
+        return -1;
+    }
+
+	/* disable PLL2_CLK */
+	set_cpu_domain_clk_gating(cpu_clk_pll2, 0);
+
+    /* enable PLL Write Protect */
+    val = readReg(CR_PLL_WR_PROTECT);
+    val &= (~0xff);
+    writeReg(CR_PLL_WR_PROTECT, val);
+
+    /* read armpll back to make sure it's expected */
+    if (confirm_armpll(cpuFreq))
+    {
+		return -1;
+    }
+
+    return 0;
+}
+
+
+/* This function can only be used in ASIC */
+int en7523_armpll_set(enum e_cpu_freq cpuFreq)
+{
+    unsigned int val;
+#if 0	//YMC mark for new AVS FW
+    AVS_STATUS_T ret;
+
+
+    /* adjust voltage if needed */
+    val = AVS_Get_Vcore();
+    if (val != voltage_config[cpuFreq]) {
+        ret = AVS_Set(voltage_config[cpuFreq]);
+        if (ret!=AVS_OK) {
+            printf("ERROR: AVS_Set failed (ErrCode:%d) for voltage_config[%d]:%d\n", ret, cpuFreq, voltage_config[cpuFreq]);
+            /* default voltage is 1.15V which can support cpufreq up to 750 MHz*/
+            if (cpuFreq>cpu_freq_750M) {
+                cpuFreq = cpu_freq_750M;
+                AVS_Set(voltage_config[cpuFreq]);
+            }
+        }
+    }
+#endif
+	
+	/* reject an out-of-range OPP index before touching any PLL register */
+	if (!is_valid_cpu_freq(cpuFreq))
+		return -1;
+
+	if (armpll_clk_MHz[cpuFreq] > CPU_FREQ_SPEC_MAX_MHZ)
+		printf("WARNING: overclocking ARMPLL to %uMHz (spec max %uMHz), "
+		       "AVS voltage is not scaled\n",
+		       armpll_clk_MHz[cpuFreq], CPU_FREQ_SPEC_MAX_MHZ);
+
+	/* switch to PLL2_CLK */
+	if (clk_src_switch(clk_src_pll2)) {
+		printf("cpu clock switch to pll2 fail.\n");
+		/* disable PLL2_CLK */
+		set_cpu_domain_clk_gating(cpu_clk_pll2, 0);
+		return -1;
+	}
+
+    /* disable PLL Write Protect */
+    val = readReg(CR_PLL_WR_PROTECT);
+    val &= (~0xff);
+    val |= WT_PROTECT_MAGIC;
+    writeReg(CR_PLL_WR_PROTECT, val);
+
+    /* set armpll */
+    configure_armpll(cpuFreq);
+
+    /* wait for 0.5us at least */
+    udelay(1);
+
+	/* switch to ARMPLL_CLK */	  
+	if (clk_src_switch(clk_src_armpll)) {
+		printf("cpu clock switch to armpll fail.\n");
+		/* enable PLL Write Protect */
+		val = readReg(CR_PLL_WR_PROTECT);
+		val &= (~0xff);
+		writeReg(CR_PLL_WR_PROTECT, val);
+		return -1;
+	}
+
+	/* disable PLL2_CLK */
+	set_cpu_domain_clk_gating(cpu_clk_pll2, 0);
+
+    /* enable PLL Write Protect */
+    val = readReg(CR_PLL_WR_PROTECT);
+    val &= (~0xff);
+    writeReg(CR_PLL_WR_PROTECT, val);
+
+    /* read armpll back to make sure it's expected */
+    if (confirm_armpll(cpuFreq))
+        return -1;
+
+    return 0;
+}
+
+#if defined(IMAGE_BL2) || defined(IMAGE_BL31)
+#define FREQ_LOG(fmt, ...)	NOTICE(fmt, ##__VA_ARGS__)
+#else /* UBoot */
+#define FREQ_LOG(fmt, ...)	printf(fmt, ##__VA_ARGS__)
+#endif
+
+static const char *ecnt_chip_name(void)
+{
+	if (isEN7523)
+		return "EN7523";
+	if (isEN7581)
+		return "EN7581";
+	if (isAN7552)
+		return "AN7552";
+	if (isAN7583)
+		return "AN7583";
+
+	return "Unknown";
+}
+
+/*
+ * Return the concrete package name of the running SoC (e.g. "AN7581DT"),
+ * or NULL when the chip family or the package ID is not known.
+ * The name tables live in ecnt_pkgid.h, indexed by GET_PACKAGE_ID().
+ */
+static const char *ecnt_package_name(void)
+{
+	const char *const *names;
+	unsigned int count;
+	unsigned int id = GET_PACKAGE_ID();
+
+	if (isEN7523) {
+		names = en7523_pkg_names;
+		count = sizeof(en7523_pkg_names) / sizeof(en7523_pkg_names[0]);
+	} else if (isEN7581) {
+		names = an7581_pkg_names;
+		count = sizeof(an7581_pkg_names) / sizeof(an7581_pkg_names[0]);
+	} else if (isAN7552) {
+		names = an7552_pkg_names;
+		count = sizeof(an7552_pkg_names) / sizeof(an7552_pkg_names[0]);
+	} else if (isAN7583) {
+		names = an7583_pkg_names;
+		count = sizeof(an7583_pkg_names) / sizeof(an7583_pkg_names[0]);
+	} else {
+		return NULL;
+	}
+
+	if (id >= count || names[id] == NULL)
+		return NULL;
+
+	return names[id];
+}
+
+/*
+ * Reference crystal / base clock of the running SoC:
+ *  - EN7581 / AN7583 / AN7552: fixed 50MHz CPUPLL reference
+ *    (freq = pcw * 50 with posdiv 0, or pcw * 25 with posdiv 1)
+ *  - EN7523: 20 or 25MHz XTAL feeding the SYSPLL
+ */
+static unsigned int ecnt_xtal_clk_mhz(void)
+{
+#if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583) || defined(TCSUPPORT_CPU_AN7552)
+	return 50;
+#else
+	return isXtalClk25M() ? 25 : 20;
+#endif
+}
+
+/*
+ * Report the CPU frequency configuration of the running SoC at boot.
+ * The ARM PLL frequency is read back from the PLL registers (through
+ * curr_armpll_clk_get()), so what is printed is the effective frequency,
+ * not the one that was requested.
+ */
+void ecnt_cpu_freq_info_dump(void)
+{
+	unsigned int freq, clk_src, divider, steps;
+	const char *pkg_name;
+#if defined(IMAGE_BL2) || defined(IMAGE_BL31)
+	unsigned int sys_clk = 0;
+#endif
+
+	freq = curr_armpll_clk_get();
+	clk_src = (unsigned int)curr_clk_src_enum_get();
+	divider = curr_clk_divider_get();
+	steps = cpu_freq_table_len();
+	pkg_name = ecnt_package_name();
+#if defined(IMAGE_BL2) || defined(IMAGE_BL31)
+	sys_clk = GET_SYS_CLK();
+#endif
+
+	FREQ_LOG("SoC: %s package %s (HIR 0x%x, pkg id %u)\n",
+		 ecnt_chip_name(), pkg_name ? pkg_name : "unknown",
+		 GET_HIR(), GET_PACKAGE_ID());
+	FREQ_LOG("CPUFreq: XTAL %u MHz, ARM PLL %u MHz\n",
+		 ecnt_xtal_clk_mhz(), freq);
+#if defined(IMAGE_BL2) || defined(IMAGE_BL31)
+	if (sys_clk)
+		FREQ_LOG("CPUFreq: sys clk %u MHz\n", sys_clk);
+#endif
+
+	if (divider)
+		FREQ_LOG("CPUFreq: clock source: %s, divider: 1/%u\n",
+			 clk_src_name[clk_src], divider);
+	else
+		FREQ_LOG("CPUFreq: clock source: %s, divider: unknown\n",
+			 clk_src_name[clk_src]);
+
+	FREQ_LOG("CPUFreq: OPP table: %u - %u MHz, %u steps\n",
+		 armpll_clk_MHz[0], armpll_clk_MHz[steps - 1], steps);
+
+	if (freq == 0)
+		FREQ_LOG("CPUFreq: WARNING: failed to read back the ARM PLL frequency\n");
+	else if (freq > CPU_FREQ_SPEC_MAX_MHZ)
+		FREQ_LOG("CPUFreq: WARNING: running above the %u MHz spec maximum\n",
+			 CPU_FREQ_SPEC_MAX_MHZ);
+}
