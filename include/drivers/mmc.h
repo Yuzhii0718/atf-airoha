@@ -40,8 +40,8 @@
 #define MMC_RSP_48			BIT_32(0U)
 #define MMC_RSP_136			BIT_32(1U)		/* 136 bit response */
 #define MMC_RSP_CRC			BIT_32(2U)		/* expect valid crc */
-#define MMC_RSP_CMD_IDX			BIT_32(3U)		/* response contains cmd idx */
-#define MMC_RSP_BUSY			BIT_32(4U)		/* device may be busy */
+#define MMC_RSP_CMD_IDX			BIT_32(4U)		/* response contains cmd idx */
+#define MMC_RSP_BUSY			BIT_32(3U)		/* device may be busy */
 
 /* JEDEC 4.51 chapter 6.12 */
 #define MMC_RESPONSE_R1			(MMC_RSP_48 | MMC_RSP_CMD_IDX | MMC_RSP_CRC)
