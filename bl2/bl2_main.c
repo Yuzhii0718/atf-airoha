@@ -25,15 +25,35 @@
 
 #include "bl2_private.h"
 
-#ifdef __aarch64__
 #define NEXT_IMAGE	"BL31"
-#else
-#define NEXT_IMAGE	"BL32"
+
+#define CURRENT_BL2	"BL2"
+
+#ifdef IMAGE_BL21
+#undef CURRENT_BL2
+#define CURRENT_BL2	"BL21"
+#endif
+
+#ifdef IMAGE_BL22
+#undef CURRENT_BL2
+#define CURRENT_BL2	"BL22"
+#endif
+
+#ifdef IMAGE_BL23
+#undef CURRENT_BL2
+#define CURRENT_BL2	"BL23"
 #endif
 
 #if ENABLE_RUNTIME_INSTRUMENTATION
 	PMF_REGISTER_SERVICE(bl_svc, PMF_RT_INSTR_SVC_ID,
-		BL_TOTAL_IDS, PMF_DUMP_ENABLE);
+			BL_TOTAL_IDS, PMF_DUMP_ENABLE);
+#endif
+
+/* precompiled .o will use uartDisable to toggle verbose output */
+#if LOG_LEVEL >= LOG_LEVEL_INFO
+uint32_t uartDisable = 0;
+#else
+uint32_t uartDisable = 1;
 #endif
 
 /*******************************************************************************
@@ -41,9 +61,9 @@
  * next BL. The memory occupied by BL2 will be reclaimed by BL3x stages.
  ******************************************************************************/
 void __no_pauth bl2_main(u_register_t arg0, u_register_t arg1, u_register_t arg2,
-	       u_register_t arg3)
+		       u_register_t arg3)
 {
-	entry_point_info_t *next_bl_ep_info;
+	[[maybe_unused]] entry_point_info_t *next_bl_ep_info;
 
 	/* Enable early console if EARLY_CONSOLE flag is enabled */
 	plat_setup_early_console();
@@ -69,18 +89,21 @@ void __no_pauth bl2_main(u_register_t arg0, u_register_t arg1, u_register_t arg2
 	PMF_CAPTURE_TIMESTAMP(bl_svc, BL2_ENTRY, PMF_CACHE_MAINT);
 #endif
 
-	NOTICE("BL2: %s\n", build_version_string);
-	NOTICE("BL2: %s\n", build_message);
+	NOTICE(CURRENT_BL2": %s\n", build_version_string);
+	NOTICE(CURRENT_BL2": %s\n", build_message);
+
+	NOTICE("Current in %s\n", CURRENT_BL2);
 
 #if PSA_FWU_SUPPORT
 	fwu_init();
 #endif /* PSA_FWU_SUPPORT */
 
+#if !defined(IMAGE_BL21) && !defined(IMAGE_BL22)
 	crypto_mod_init();
 
 	/* Initialize authentication module */
 	auth_mod_init();
-
+#endif
 	/* Initialize the Measured Boot backend */
 	bl2_plat_mboot_init();
 
@@ -92,7 +115,7 @@ void __no_pauth bl2_main(u_register_t arg0, u_register_t arg1, u_register_t arg2
 
 	/* Initialize boot source */
 	bl2_plat_preload_setup();
-
+#if !defined(IMAGE_BL21) && !defined(IMAGE_BL22)
 #if ENABLE_RUNTIME_INSTRUMENTATION
 	PMF_CAPTURE_TIMESTAMP(bl_svc, BL2_AUTH_START, PMF_CACHE_MAINT);
 #endif
@@ -146,8 +169,8 @@ void __no_pauth bl2_main(u_register_t arg0, u_register_t arg1, u_register_t arg2
 	 */
 	smc(BL1_SMC_RUN_IMAGE, (unsigned long)next_bl_ep_info, 0, 0, 0, 0, 0, 0);
 #else /* if BL2_RUNS_AT_EL3 */
+	NOTICE(CURRENT_BL2 ": Booting " NEXT_IMAGE "\n");
 
-	NOTICE("BL2: Booting " NEXT_IMAGE "\n");
 	print_entry_point_info(next_bl_ep_info);
 #if ENABLE_RUNTIME_INSTRUMENTATION
 	PMF_CAPTURE_TIMESTAMP(bl_svc, BL2_EXIT, PMF_CACHE_MAINT);
@@ -163,4 +186,5 @@ void __no_pauth bl2_main(u_register_t arg0, u_register_t arg1, u_register_t arg2
 
 	bl2_run_next_image(next_bl_ep_info);
 #endif /* BL2_RUNS_AT_EL3 */
+#endif /* !defined(IMAGE_BL21) && !defined(IMAGE_BL22) */
 }

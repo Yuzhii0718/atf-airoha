@@ -12,6 +12,16 @@ VERSION_MINOR			:= 15
 # VERSION_PATCH is only used for LTS releases
 VERSION_PATCH			:= 0
 VERSION				:= ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}
+ifneq ($(strip $(RDKB_BUILD)),)
+CFLAGS :=
+LDFLAGS :=
+endif
+
+ifeq ($(TCSUPPORT_OPENWRT),)
+TRX_DIR=$(TOOLS_TRX_DIR)
+else
+TRX_DIR=$(TOOLS_DIR)/trx
+endif
 
 # Default goal is build all images
 .DEFAULT_GOAL			:= all
@@ -49,6 +59,38 @@ endif
 ################################################################################
 # Configure the toolchains used to build TF-A and its tools
 ################################################################################
+
+################################################################################
+# Airoha/ECNT SDK toolchain selection
+################################################################################
+
+ifeq (${ARCH},aarch32)
+ifneq ($(strip $(RDKB_BUILD)),)
+CROSS_COMPILE_PATH	=	/opt/trendchip/buildroot-gcc1030-glibc232_kernel5_4/usr/bin
+CROSS_COMPILE_ATF	=	$(CROSS_COMPILE_PATH)/arm-linux-
+else
+ifneq ($(strip $(TCSUPPORT_OPENWRT)),)
+ifneq ($(strip $(TCSUPPORT_CPU_AN7583)$(TCSUPPORT_CPU_EN7581)),)
+CROSS_COMPILE_ATF	=	$(ARM32TOOLCHAIN_BASE)
+else
+CROSS_COMPILE_ATF	=	$(CROSS_COMPILE)
+endif
+else
+ifneq ($(TOOLCHAIN_ATF_BASE),)
+CROSS_COMPILE_PATH	=	$(TOOLCHAIN_ATF_BASE)/bin
+else
+CROSS_COMPILE_PATH	=	$(TOOLCHAIN_BASE)/bin
+endif
+CROSS_COMPILE_ATF	=	$(CROSS_COMPILE_PATH)/arm-linux-
+endif
+endif
+else
+CROSS_COMPILE_ATF	=	$(CROSS_COMPILE)
+endif
+
+# toolchain.mk derives every tool from CROSS_COMPILE, so propagate the
+# vendor selected prefix into it (a no-op for the AArch64 build).
+CROSS_COMPILE		:=	$(CROSS_COMPILE_ATF)
 
 include ${MAKE_HELPERS_DIRECTORY}toolchain.mk
 
@@ -166,6 +208,16 @@ ifdef W
 	endif
 endif
 
+ifneq ($(strip $(TCSUPPORT_UBOOT)),)
+CONFIG_ECNT_UBOOT		:=	1
+$(eval $(call add_define,CONFIG_ECNT_UBOOT))
+CONFIG_ECNT			:=	1
+$(eval $(call add_define,CONFIG_ECNT))
+CONFIG_TPL_BUILD		:=	1
+$(eval $(call add_define,CONFIG_TPL_BUILD))
+
+TF_CFLAGS		+=	$(BSP_CFLAGS)
+endif
 ################################################################################
 # Common sources and include directories
 ################################################################################
@@ -398,6 +450,7 @@ endif
 ################################################################################
 # Build `AARCH32_SP` as BL32 image for AArch32
 ################################################################################
+ifneq (${TCSUPPORT_OPTEE},)
 ifeq (${ARCH},aarch32)
         NEED_BL32 := yes
 
@@ -412,6 +465,9 @@ ifeq (${ARCH},aarch32)
                 include ${AARCH32_SP_MAKE}
         endif
 endif #(ARCH=aarch32)
+else
+        NEED_BL32 := no
+endif
 
 ################################################################################
 # Include libc if not overridden
@@ -502,9 +558,9 @@ ifneq (${GENERATE_COT},0)
         $(eval FWU_CRT_ARGS += -n)
         $(eval BL2_CRT_ARGS += -n)
         ifneq (${SAVE_KEYS},0)
-            $(eval CRT_ARGS += -k)
-            $(eval FWU_CRT_ARGS += -k)
-            $(eval BL2_CRT_ARGS += -k)
+            $(eval CRT_ARGS += -k --trusted-world-key $(BUILD_PLAT)/TWkey --non-trusted-world-key $(BUILD_PLAT)/NTWkey --scp-fw-key $(BUILD_PLAT)/SCPFKey --soc-fw-key $(BUILD_PLAT)/SOCFkey --tos-fw-key $(BUILD_PLAT)/TFkey --nt-fw-key $(BUILD_PLAT)/NTFkey)
+            $(eval FWU_CRT_ARGS += -k --trusted-world-key $(BUILD_PLAT)/TWkey --non-trusted-world-key $(BUILD_PLAT)/NTWkey --scp-fw-key $(BUILD_PLAT)/SCPFKey --soc-fw-key $(BUILD_PLAT)/SOCFkey --tos-fw-key $(BUILD_PLAT)/TFkey --nt-fw-key $(BUILD_PLAT)/NTFkey)
+            $(eval BL2_CRT_ARGS += -k --trusted-world-key $(BUILD_PLAT)/TWkey --non-trusted-world-key $(BUILD_PLAT)/NTWkey --scp-fw-key $(BUILD_PLAT)/SCPFKey --soc-fw-key $(BUILD_PLAT)/SOCFkey --tos-fw-key $(BUILD_PLAT)/TFkey --nt-fw-key $(BUILD_PLAT)/NTFkey)
         endif
     endif
     # Include TBBR makefile (unless the platform indicates otherwise)
@@ -520,6 +576,17 @@ endif #(FIP_ALIGN)
 ifdef FDT_SOURCES
 	NEED_FDT := yes
 endif #(FDT_SOURCES)
+ifneq (${CONFIG_ECNT},)
+ifneq (${BYPASS_FWUPGRADE},0)
+FIP_ARGS += --plat-toc-flags ${BYPASS_FWUPGRADE}
+endif
+ifneq (${ENC_TCLINUX},0)
+FIP_ARGS += --plat-toc-flags 2
+endif
+ifneq (${ARM_SECURE_BOOT_FLASH_KEY},0)
+FIP_ARGS += --plat-toc-flags ${ARM_SECURE_BOOT_FLASH_KEY}
+endif
+endif
 
 ################################################################################
 # Include libraries' Makefile that are used in all BL
@@ -528,6 +595,7 @@ endif #(FDT_SOURCES)
 include lib/stack_protector/stack_protector.mk
 
 ################################################################################
+PRIVATE_KEY_PATH	?= plat/ecnt/key
 # Include BL specific makefiles
 ################################################################################
 
@@ -630,6 +698,7 @@ $(eval $(call assert_booleans,\
 	BL2_INV_DCACHE \
 	ENCRYPT_BL31 \
 	ENCRYPT_BL32 \
+	ENCRYPT_BL33 \
 	ERRATA_SPECULATIVE_AT \
 	RAS_TRAP_NS_ERR_REC_ACCESS \
 	COT_DESC_IN_DTB \
@@ -751,6 +820,10 @@ endif
 # platform to overwrite the default options
 ################################################################################
 
+ifeq (${IMAGE_BL21}${IMAGE_BL22},)
+$(eval $(call add_define,TRUSTED_BOARD_BOOT))
+endif
+
 $(eval $(call add_defines,\
     $(sort \
 	ALLOW_RO_XLAT_TABLES \
@@ -802,6 +875,7 @@ $(eval $(call add_defines,\
 	FFH_SUPPORT \
 	ENCRYPT_BL31 \
 	ENCRYPT_BL32 \
+	ENCRYPT_BL33 \
 	ERROR_DEPRECATED \
 	FAULT_INJECTION_SUPPORT \
 	GICV2_G0_FOR_EL3 \
@@ -839,7 +913,7 @@ $(eval $(call add_defines,\
 	SPMC_AT_EL3_SEL0_SP \
 	SPMD_SPM_AT_SEL2 \
 	TRANSFER_LIST \
-	TRUSTED_BOARD_BOOT \
+	CRYPTO_SUPPORT \
 	TRNG_SUPPORT \
 	ERRATA_ABI_SUPPORT \
 	ERRATA_NON_ARM_INTERCONNECT \
@@ -1003,18 +1077,28 @@ endif #(NEED_BL1)
 
 ifeq (${NEED_BL2},yes)
 
-ifeq (${RESET_TO_BL2}, 0)
+#ifeq (${RESET_TO_BL2}, 0)
 FIP_BL2_ARGS := tb-fw
-endif
+#endif
 
 BL2_SOURCES := $(sort ${BL2_SOURCES})
 
 ifeq (${SEPARATE_BL2_FIP},1)
+ifneq (${AES_FW},none)
+$(if ${BL2}, $(eval $(call TOOL_ADD_IMG,bl2,--${FIP_BL2_ARGS},BL2_,$(ENCRYPT_BL2))), \
+	$(eval $(call MAKE_BL,bl2,${FIP_BL2_ARGS},BL2_,$(ENCRYPT_BL2))))
+else
 $(if ${BL2}, $(eval $(call TOOL_ADD_IMG,bl2,--${FIP_BL2_ARGS},BL2_)), \
 	$(eval $(call MAKE_BL,bl2,${FIP_BL2_ARGS},BL2_)))
+endif
+else
+ifneq (${AES_FW},none)
+$(if ${BL2}, $(eval $(call TOOL_ADD_IMG,bl2,--${FIP_BL2_ARGS},,$(ENCRYPT_BL2))), \
+	$(eval $(call MAKE_BL,bl2,${FIP_BL2_ARGS},,$(ENCRYPT_BL2))))
 else
 $(if ${BL2}, $(eval $(call TOOL_ADD_IMG,bl2,--${FIP_BL2_ARGS})), \
 	$(eval $(call MAKE_BL,bl2,${FIP_BL2_ARGS})))
+endif
 endif #(SEPARATE_BL2_FIP)
 
 endif #(NEED_BL2)
@@ -1066,7 +1150,11 @@ endif #(NEED_RMM)
 
 # Add the BL33 image if required by the platform
 ifeq (${NEED_BL33},yes)
+ifneq (${DECRYPTION_SUPPORT},none)
+$(eval $(call TOOL_ADD_IMG,bl33,--nt-fw,,$(ENCRYPT_BL33)))
+else
 $(eval $(call TOOL_ADD_IMG,bl33,--nt-fw))
+endif
 endif #(NEED_BL33)
 
 ifeq (${NEED_BL2U},yes)
@@ -1115,6 +1203,7 @@ endif
 endif #(CHECKPATCH)
 
 clean:
+clean:
 	$(s)echo "  CLEAN"
 	$(q)rm -rf $(BUILD_PLAT)
 	$(q)${MAKE} PLAT=${PLAT} BUILD_PLAT=${BUILD_PLAT} --no-print-directory -C ${FIPTOOLPATH} clean
@@ -1122,6 +1211,9 @@ clean:
 	$(q)${MAKE} PLAT=${PLAT} BUILD_PLAT=${BUILD_PLAT} --no-print-directory -C ${CRTTOOLPATH} clean
 	$(q)rm -rf ${CRTTOOLPATH}/cert_create
 	$(q)${MAKE} PLAT=${PLAT} BUILD_PLAT=${BUILD_PLAT} --no-print-directory -C ${ENCTOOLPATH} clean
+ifneq (${CONFIG_ECNT},)
+	$(q)${MAKE} PLAT=${PLAT} BUILD_PLAT=${BUILD_PLAT} --no-print-directory -C ${EFUSETOOLPATH} clean
+endif
 	$(q)${MAKE} --no-print-directory -C ${ROMLIBPATH} clean
 
 realclean distclean:
@@ -1133,6 +1225,9 @@ realclean distclean:
 	$(q)${MAKE} PLAT=${PLAT} BUILD_PLAT=${BUILD_PLAT} --no-print-directory -C ${CRTTOOLPATH} clean
 	$(q)rm -rf ${CRTTOOLPATH}/cert_create
 	$(q)${MAKE} PLAT=${PLAT} BUILD_PLAT=${BUILD_PLAT} --no-print-directory -C ${ENCTOOLPATH} clean
+ifneq (${CONFIG_ECNT},)
+	$(q)${MAKE} PLAT=${PLAT} BUILD_PLAT=${BUILD_PLAT} --no-print-directory -C ${EFUSETOOLPATH} realclean
+endif
 	$(q)${MAKE} --no-print-directory -C ${ROMLIBPATH} clean
 
 checkcodebase:		locate-checkpatch
@@ -1177,8 +1272,20 @@ ${CRTTOOL}: FORCE | $$(@D)/
 	$(s)echo "Built $@ successfully"
 	$(s)echo
 
+ifneq (${CONFIG_ECNT},)
+cert_create:
+	${Q}${MAKE} PLAT=${PLAT} USE_TBBR_DEFS=${USE_TBBR_DEFS} COT=${COT} --no-print-directory -C ${CRTTOOLPATH}
+	@${ECHO_BLANK_LINE}
+	@echo "Built $@ successfully"
+	@${ECHO_BLANK_LINE}
+endif
+
 ifneq (${GENERATE_COT},0)
 certificates: ${CRT_DEPS} ${CRTTOOL} ${DTBS}
+	@echo "${CRT_ARGS}"
+ifneq (${CONFIG_ECNT},)
+	$(q)mkdir -p ${BUILD_PLAT}
+endif
 	$(q)${CRTTOOL} ${CRT_ARGS}
 	$(s)echo
 	$(s)echo "Built $@ successfully"
@@ -1198,8 +1305,107 @@ endif #(SEPARATE_BL2_FIP)
 
 ${BUILD_PLAT}/${FIP_NAME}: ${FIP_DEPS} ${FIPTOOL} | $$(@D)/
 	$(eval ${CHECK_FIP_CMD})
+	@echo "${FIP_ARGS}"
 	$(q)${FIPTOOL} create ${FIP_ARGS} $@
 	$(q)${FIPTOOL} info $@
+ifneq (${CONFIG_ECNT},)
+	${Q}cp $(BL1) $(BUILD_PLAT)/bl1.bin
+	${Q}dd if=/dev/null of=$(BUILD_PLAT)/bl1.bin bs=1 count=0 seek=2048
+	${Q}cp $(BUILD_PLAT)/bl1.bin ${TESTFILE_NAME}
+ifeq ($(TCSUPPORT_OPENWRT),)
+	${Q}cp $@ $(IMAGE_DIR)/bootext.ram
+	${Q}${FIPTOOL} remove --trusted-key-cert --soc-fw-key-cert --nt-fw-key-cert --soc-fw-cert --nt-fw-cert --soc-fw --nt-fw --align 1024 $(IMAGE_DIR)/bootext.ram
+#	${Q}dd of=$(IMAGE_DIR)/bootext.ram if=$@ bs=2048 count=63
+else
+	${Q}dd of=bootext.ram if=$@ bs=2048 count=63
+endif
+ifneq ($(TCSUPPORT_ARM_MULTIBOOT),)
+ifeq ($(TCSUPPORT_OPENWRT),)
+	${Q}dd of=bootext.ram if=$@ bs=2048 count=63
+endif	
+	$(TRX_DIR)/trx -y bootext.ram bootext_multi
+endif
+	
+	${Q}dd of=${TESTFILE_NAME} if=$@ bs=2048 seek=1
+
+ifneq ($(TCSUPPORT_ARM_SECURE_BOOT),)
+ifneq ($(TCSUPPORT_TCBOOT_1MB_SIZE), )
+	${Q}dd if=/dev/null of=${TESTFILE_NAME} bs=1 count=0 seek=1032064
+	${Q}cat $(UBOOT_DIR)/$(TCSUPPORT_UBOOT_VERSION)/login_auth.bin >> ${TESTFILE_NAME}
+	${Q}dd if=/dev/null of=${TESTFILE_NAME} bs=1 count=0 seek=1032192
+else
+	${Q}dd if=/dev/null of=${TESTFILE_NAME} bs=1 count=0 seek=507504
+	${Q}cat $(UBOOT_DIR)/$(TCSUPPORT_UBOOT_VERSION)/login_auth.bin >> ${TESTFILE_NAME}
+	${Q}dd if=/dev/null of=${TESTFILE_NAME} bs=1 count=0 seek=507904
+endif
+
+
+ifneq ($(TCSUPPORT_ARM_SECURE_BOOT_FLASH_KEY),)
+
+
+
+ifneq ($(TCSUPPORT_CPU_AN7552),)
+	# AN7552 has 52 bytes for efuse.bin
+	${Q}dd if=/dev/null of=${TESTFILE_NAME} bs=1 count=0 seek=507848
+else
+ifneq ($(TCSUPPORT_CPU_AN7583),)
+	# AN7583 has 236 bytes for efuse.bin
+	${Q}dd if=/dev/null of=${TESTFILE_NAME} bs=1 count=0 seek=507664
+else
+ifneq ($(TCSUPPORT_CPU_EN7581),)
+	# AN7581 has 160 bytes for efuse.bin
+	${Q}dd if=/dev/null of=${TESTFILE_NAME} bs=1 count=0 seek=507740
+else
+	# else case is similiar to AN7583
+	${Q}dd if=/dev/null of=${TESTFILE_NAME} bs=1 count=0 seek=507664
+endif
+endif
+endif
+
+
+
+	${Q}cat ${EFUSE_NAME}_flash >> ${TESTFILE_NAME}
+	${Q}rm ${EFUSE_NAME}_flash
+endif
+else
+	${Q}dd if=/dev/null of=${TESTFILE_NAME} bs=1 count=0 seek=507904
+endif
+
+	${Q}cat $(UBOOT_DIR)/$(TCSUPPORT_UBOOT_VERSION)/env.bin >> ${TESTFILE_NAME}
+ifneq ($(TCSUPPORT_TCBOOT_1MB_SIZE), )
+	$(TRX_DIR)/trx -t ${TESTFILE_NAME} 0xfc000
+else
+	$(TRX_DIR)/trx -t ${TESTFILE_NAME} 0x7c000
+endif
+ifneq ($(TCSUPPORT_ARM_MULTIBOOT),)
+	${Q}cat bootext_multi tcboot.bin > multi_boot
+	$(TRX_DIR)/trx -t multi_boot 0x17c000
+endif
+ifeq ($(TCSUPPORT_OPENWRT),)
+	$(Q)mv tcboot.bin $(IMAGE_DIR)/tcboot.bin
+	mkdir -p $(BSP_EXT_TCLINUX_BUILDER)
+	cp $(IMAGE_DIR)/tcboot.bin $(BSP_EXT_TCLINUX_BUILDER)
+else
+	$(Q)mv tcboot.bin ../../
+	$(Q)mv bootext.ram ../../
+endif
+ifneq ($(TCSUPPORT_TPL_SUPPORT),)
+	cp -f $(UBOOT_DIR)/$(TCSUPPORT_UBOOT_VERSION)/dts/dt.dtb $(IMAGE_DIR)/dt.dtb
+	cp -f $(UBOOT_DIR)/$(TCSUPPORT_UBOOT_VERSION)/u-boot.bin $(IMAGE_DIR)/u-boot.bin
+	cp -f $(UBOOT_DIR)/$(TCSUPPORT_UBOOT_VERSION)/u-boot-nodtb.bin $(IMAGE_DIR)/u-boot-nodtb.bin
+	cp -f $(UBOOT_DIR)/$(TCSUPPORT_UBOOT_VERSION)/bl31.bin $(IMAGE_DIR)/bl31.bin
+	cp -f $(UBOOT_DIR)/$(TCSUPPORT_UBOOT_VERSION)/bl2.bin $(IMAGE_DIR)/bl2.bin
+	cp -f $(UBOOT_DIR)/$(TCSUPPORT_UBOOT_VERSION)/tpl/u-boot-tpl.dtb $(IMAGE_DIR)/u-boot-tpl.dtb
+	cp -f $(UBOOT_DIR)/$(TCSUPPORT_UBOOT_VERSION)/tpl/u-boot-tpl-nodtb.bin $(IMAGE_DIR)/u-boot-tpl-nodtb.bin
+	cp -f $(PRIVATE_KEY_PATH)/dev.* $(IMAGE_DIR)/
+	cp -f $(UBOOT_DIR)/$(TCSUPPORT_UBOOT_VERSION)/optee.bin $(IMAGE_DIR)/optee.bin
+	#cp -f $(UBOOT_DIR)/u-boot-airoha/inic/* $(IMAGE_DIR)/
+	cp -f $(UBOOT_DIR)/$(TCSUPPORT_UBOOT_VERSION)/env.bin $(IMAGE_DIR)/env.bin
+ifneq ($(TCSUPPORT_ARM_SECURE_BOOT),)
+	cp -f $(UBOOT_DIR)/$(TCSUPPORT_UBOOT_VERSION)/login_auth.bin $(IMAGE_DIR)/login_auth.bin
+endif
+endif
+endif
 	$(s)echo
 	$(s)echo "Built $@ successfully"
 	$(s)echo
@@ -1268,6 +1474,17 @@ ${ENCTOOL}: FORCE | $$(@D)/
 	$(s)echo
 	$(s)echo "Built $@ successfully"
 	$(s)echo
+
+ifneq (${CONFIG_ECNT},)
+efusetool: ${EFUSETOOL}
+
+${EFUSETOOL}: FORCE
+	${Q}mkdir -p $(BUILD_PLAT)
+	${Q}${MAKE} PLAT=${PLAT} BUILD_INFO=0 --no-print-directory -C ${EFUSETOOLPATH}
+	@${ECHO_BLANK_LINE}
+	@echo "Built $@ successfully"
+	@${ECHO_BLANK_LINE}
+endif
 
 cscope:
 	$(s)echo "  CSCOPE"

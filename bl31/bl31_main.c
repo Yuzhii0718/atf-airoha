@@ -20,6 +20,7 @@
 #include <drivers/arm/dsu.h>
 #include <drivers/arm/gic.h>
 #include <drivers/console.h>
+#include <drivers/delay_timer.h>
 #include <lib/bootmarker_capture.h>
 #include <lib/el3_runtime/context_debug.h>
 #include <lib/el3_runtime/context_mgmt.h>
@@ -71,6 +72,13 @@ static uint32_t next_image_type = (uint32_t)NON_SECURE;
 volatile uint32_t unsupported_mpid_flag = 1;
 #endif
 
+/* precompiled .o will use uartDisable to toggle verbose output */
+#if LOG_LEVEL >= LOG_LEVEL_INFO
+uint32_t uartDisable = 0;
+#else
+uint32_t uartDisable = 1;
+#endif
+
 /*
  * Implement the ARM Standard Service function to get arguments for a
  * particular service.
@@ -92,6 +100,18 @@ uintptr_t get_arm_std_svc_args(unsigned int svc_mask)
 static void __init bl31_lib_init(void)
 {
 	cm_init();
+}
+
+void _bl31_debug_delay(void){
+	int i =0;
+
+	for (i=0;i<20;i++){
+		if(i&0x2){
+			printf(" %s, %d, %d\n",__FUNCTION__, __LINE__, i);
+			mdelay(500);
+		}
+	}
+	
 }
 
 /*******************************************************************************
@@ -171,6 +191,7 @@ void __no_pauth bl31_main(u_register_t arg0, u_register_t arg1, u_register_t arg
 
 	/* Initialize the runtime services e.g. psci. */
 	INFO("BL31: Initializing runtime services\n");
+
 	runtime_svc_init();
 
 	/*
@@ -321,7 +342,7 @@ void __init bl31_prepare_next_image_entry(void)
 	assert(image_type == GET_SECURITY_STATE(next_image_info->h.attr));
 
 	INFO("BL31: Preparing for EL3 exit to %s world\n",
-		(image_type == SECURE) ? "secure" : "normal");
+	     (image_type == SECURE) ? "secure" : "normal");
 	print_entry_point_info(next_image_info);
 	cm_init_my_context(next_image_info);
 
