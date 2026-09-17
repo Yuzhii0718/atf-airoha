@@ -696,65 +696,26 @@ endif
 endif
 
 	$$(s)echo "  LD      $$@"
-ifdef MAKE_BUILD_STRINGS
-	$(call MAKE_BUILD_STRINGS,$(BUILD_DIR)/build_message.o)
-else
-	@echo 'const char build_message[] = "Built : "$(BUILD_MESSAGE_TIMESTAMP); \
-	       const char version_string[] = "${VERSION_STRING}"; \
-	       const char version[] = "${VERSION}";' | \
-		$$(CC) $$(TF_CFLAGS) $$(CFLAGS) -xc -c - -o $(BUILD_DIR)/build_message.o
-endif
-ifneq ($(findstring armlink,$(notdir $(LD))),)
+ifeq ($($(ARCH)-ld-id),arm-link)
 	$$(q)$($(ARCH)-ld) -o $$@ $$(TF_LDFLAGS) $$(LDFLAGS) $(BL_LDFLAGS) --entry=${1}_entrypoint \
 		--predefine=$(call escape-shell,-D__LINKER__=$(__LINKER__)) \
 		--predefine=$(call escape-shell,-DTF_CFLAGS=$(TF_CFLAGS)) \
 		--map --list="$(MAPFILE)" --scatter=${PLAT_DIR}/scat/${1}.scat \
 		$(LDPATHS) $(LIBWRAPPER) $(LDLIBS) $(BL_LIBS) $(OBJS)
-else ifneq ($(findstring gcc,$(notdir $(LD))),)
-	$$(q)$($(ARCH)-ld) -o $$@ $$(TF_LDFLAGS) $$(LDFLAGS) -Wl,-Map=$(MAPFILE) \
-		$(addprefix -Wl$(comma)--script$(comma),$(LINKER_SCRIPTS)) -Wl,--script,$(DEFAULT_LINKER_SCRIPT) \
-		$(BUILD_DIR)/build_message.o \
-		$(sort $(OBJS)) $(LDPATHS) $(LIBWRAPPER) $(LDLIBS) $(BL_LIBS)
 else
 ifdef CONFIG_ECNT
-ifneq ($(TCSUPPORT_BL2_OPTIMIZATION),)
-ifneq ($(TCSUPPORT_BB_FIX_UNOPEN),0)
-	$$(q)$$(LD) -o $$@ $$(TF_LDFLAGS) $$(LDFLAGS) $(BL_LDFLAGS) -Map=$(MAPFILE) \
-		$(addprefix -T ,$(LINKER_SCRIPTS)) --script $(DEFAULT_LINKER_SCRIPT) \
-		$(BUILD_DIR)/build_message.o \
-		$(sort $(OBJS) $(UNOPEN_OBJS)) $(LDPATHS) $(LIBWRAPPER) $(LDLIBS) $(BL_LIBS)
+	$$(q)$($(ARCH)-ld) -o $$@ $$(TF_LDFLAGS) $$(LDFLAGS) $(BL_LDFLAGS) \
+		$(call ld_prefix,--no-fatal-warnings) \
+		$(GNU_LINKER_ARGS) $(LDPATHS) \
+		$(call ld_prefix,--start-group) \
+			$(sort $(OBJS) $(UNOPEN_OBJS)) $(LIBWRAPPER) $(LDLIBS) $(BL_LIBS) \
+		$(call ld_prefix,--end-group)
 else
-	$$(q)$$(LD) -o $$@ $$(TF_LDFLAGS) $$(LDFLAGS) $(BL_LDFLAGS) -Map=$(MAPFILE) \
-		$(addprefix -T ,$(LINKER_SCRIPTS)) --script $(DEFAULT_LINKER_SCRIPT) \
-		$(BUILD_DIR)/build_message.o \
-		$(sort $(OBJS)) $(LDPATHS) $(LIBWRAPPER) $(LDLIBS) $(BL_LIBS)
-endif
-else
-ifneq ($(TCSUPPORT_BB_FIX_UNOPEN),0)
-	$$(q)$$(LD) -o $$@ $$(TF_LDFLAGS) $$(LDFLAGS) $(BL_LDFLAGS) -Map=$(MAPFILE) \
-		$(addprefix -T ,$(LINKER_SCRIPTS)) --script $(DEFAULT_LINKER_SCRIPT) \
-		$(BUILD_DIR)/build_message.o \
-		$(sort $(REBUILD_OBJS) $(UNOPEN_OBJS)) $(LDPATHS) $(LIBWRAPPER) $(LDLIBS) $(BL_LIBS)
-else
-	$$(q)$$(LD) -o $$@ $$(TF_LDFLAGS) $$(LDFLAGS) $(BL_LDFLAGS) -Map=$(MAPFILE) \
-		$(addprefix -T ,$(LINKER_SCRIPTS)) --script $(DEFAULT_LINKER_SCRIPT) \
-		$(BUILD_DIR)/build_message.o \
-		$(sort $(OBJS)) $(LDPATHS) $(LIBWRAPPER) $(LDLIBS) $(BL_LIBS)
-
-	if [ "$$(basename $$(notdir $$@))" = "bl2" ] ; then \
-		$$(AR) rcs $(BUILD_DIR)/libbl2.a $(BL_LINK_OBJS) ; \
-		$$(LD) -o $$@ $$(TF_LDFLAGS) $$(LDFLAGS) $(BL_LDFLAGS) -Map=$(MAPFILE) \
-			$(addprefix -T ,$(LINKER_SCRIPTS)) --script $(DEFAULT_LINKER_SCRIPT) \
-			$(BUILD_DIR)/build_message.o \
-			$(sort $(REBUILD_OBJS) $(UNOPEN_OBJS)) -L$(BUILD_DIR) -lbl2 $(LDPATHS) $(LIBWRAPPER) $(LDLIBS) $(BL_LIBS) ; \
-	fi
-endif
-endif
-else
-	$$(q)$$(LD) -o $$@ $$(TF_LDFLAGS) $$(LDFLAGS) $(BL_LDFLAGS) -Map=$(MAPFILE) \
-		$(addprefix -T ,$(LINKER_SCRIPTS)) --script $(DEFAULT_LINKER_SCRIPT) \
-		$(BUILD_DIR)/build_message.o \
-		$(sort $(OBJS)) $(LDPATHS) $(LIBWRAPPER) $(LDLIBS) $(BL_LIBS)
+	$$(q)$($(ARCH)-ld) -o $$@ $$(TF_LDFLAGS) $$(LDFLAGS) $(BL_LDFLAGS) \
+		$(GNU_LINKER_ARGS) $(LDPATHS) \
+		$(call ld_prefix,--start-group) \
+			$(OBJS) $(LIBWRAPPER) $(LDLIBS) $(BL_LIBS) \
+		$(call ld_prefix,--end-group)
 endif
 endif
 

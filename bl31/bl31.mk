@@ -222,7 +222,14 @@ endif
 BL31_DEFAULT_LINKER_SCRIPT_SOURCE := bl31/bl31.ld.S
 
 # CRYPTO_SUPPORT
+# ECNT BL31 authenticates the images it loads (plat/ecnt calls auth_mod_init()
+# and load_auth_image()), so it needs the crypto module.  Upstream BL31 does not
+# authenticate anything, hence the default stays 0.
+ifneq (${CONFIG_ECNT},)
+NEED_AUTH := $(if $(filter 1,$(TRUSTED_BOARD_BOOT)),1,)
+else
 NEED_AUTH := 0
+endif
 NEED_HASH := $(if $(filter 1,$(MEASURED_BOOT) $(DRTM_SUPPORT)),1,)
 $(eval $(call set_crypto_support,NEED_AUTH,NEED_HASH))
 
