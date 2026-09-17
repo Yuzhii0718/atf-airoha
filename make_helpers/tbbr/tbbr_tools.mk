@@ -87,11 +87,11 @@ $(if ${NON_TRUSTED_WORLD_KEY},$(eval $(call CERT_ADD_CMD_OPT,${NON_TRUSTED_WORLD
 
 # Add the BL2 CoT (image cert)
 ifeq (${NEED_BL2},yes)
-ifeq (${RESET_TO_BL2}, 0)
+# ifeq (${RESET_TO_BL2}, 0)
 ifneq (${COT},cca)
 $(eval $(call TOOL_ADD_PAYLOAD,${BUILD_PLAT}/tb_fw.crt,--tb-fw-cert))
 endif
-endif
+# endif
 endif
 
 # Add the SCP_BL2 CoT (key cert + img cert)
@@ -103,7 +103,7 @@ ifneq (${COT},cca)
 endif
 endif
 
-ifeq (${ARCH},aarch64)
+# ifeq (${ARCH},aarch64)
 ifeq (${NEED_BL31},yes)
 # Add the BL31 CoT (key cert + img cert)
 $(if ${BL31_KEY},$(eval $(call CERT_ADD_CMD_OPT,${BL31_KEY},--soc-fw-key)))
@@ -112,7 +112,7 @@ $(eval $(call TOOL_ADD_PAYLOAD,${BUILD_PLAT}/soc_fw_content.crt,--soc-fw-cert))
 $(eval $(call TOOL_ADD_PAYLOAD,${BUILD_PLAT}/soc_fw_key.crt,--soc-fw-key-cert))
 endif
 endif
-endif
+# endif
 
 # Add the BL32 CoT (key cert + img cert)
 ifeq (${NEED_BL32},yes)
