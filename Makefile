@@ -92,6 +92,14 @@ endif
 # vendor selected prefix into it (a no-op for the AArch64 build).
 CROSS_COMPILE		:=	$(CROSS_COMPILE_ATF)
 
+# The ECNT platform code branches on AARCH32/AARCH64 rather than __aarch64__.
+ifeq (${ARCH},aarch32)
+$(eval $(call add_define,AARCH32))
+else
+$(eval $(call add_define,AARCH64))
+endif
+
+
 include ${MAKE_HELPERS_DIRECTORY}toolchain.mk
 
 # Assertions enabled for DEBUG builds by default
@@ -218,6 +226,61 @@ $(eval $(call add_define,CONFIG_TPL_BUILD))
 
 TF_CFLAGS		+=	$(BSP_CFLAGS)
 endif
+
+# Turn the SDK build options passed on the command line into compiler defines.
+ifneq ($(strip $(MT7510_EN7512_FPGA_STAGE)),)
+$(eval $(call add_define,MT7510_EN7512_FPGA_STAGE))
+endif
+
+ifneq ($(strip $(TCSUPPORT_CPU_EN7581)),)
+$(eval $(call add_define,TCSUPPORT_CPU_EN7581))
+$(eval $(call add_define,TCSUPPORT_CPU_EN7523))
+$(eval $(call add_define,TCSUPPORT_CPU_EN7512))
+$(eval $(call add_define,TCSUPPORT_CPU_ARMV8))
+$(eval $(call add_define,TCSUPPORT_UBOOT_64BIT))
+endif
+
+ifneq ($(strip $(TCSUPPORT_CPU_AN7583)),)
+$(eval $(call add_define,TCSUPPORT_CPU_AN7583))
+$(eval $(call add_define,TCSUPPORT_CPU_EN7523))
+$(eval $(call add_define,TCSUPPORT_CPU_EN7512))
+$(eval $(call add_define,TCSUPPORT_CPU_ARMV8))
+$(eval $(call add_define,TCSUPPORT_UBOOT_64BIT))
+endif
+
+ifneq ($(strip $(TCSUPPORT_EMMC)),)
+$(eval $(call add_define,TCSUPPORT_EMMC))
+endif
+
+ifneq ($(strip $(TCSUPPORT_TPL_SUPPORT)),)
+$(eval $(call add_define,TCSUPPORT_TPL_SUPPORT))
+endif
+
+ifneq ($(strip $(TCSUPPORT_CPU_AN7552)),)
+$(eval $(call add_define,TCSUPPORT_CPU_AN7552))
+endif
+
+ifneq ($(strip $(TCSUPPORT_DUAL_KEY)),)
+$(eval $(call add_define,TCSUPPORT_DUAL_KEY))
+endif
+
+ifneq ($(strip $(TCSUPPORT_BOARD_SELECT)),)
+$(eval $(call add_define,TCSUPPORT_BOARD_SELECT))
+endif
+
+ifneq ($(strip $(TCSUPPORT_BL2_OPTIMIZATION)),)
+$(eval $(call add_define,TCSUPPORT_BL2_OPTIMIZATION))
+endif
+
+ifneq ($(strip $(TCSUPPORT_TCBOOT_1MB_SIZE)),)
+$(eval $(call add_define,TCSUPPORT_TCBOOT_1MB_SIZE))
+endif
+
+ifneq (${CONFIG_ECNT},)
+EFUSETOOLPATH		?=	tools/ecnt
+EFUSETOOL		?=	${EFUSETOOLPATH}/ecnt_efuse$(.exe)
+endif
+
 ################################################################################
 # Common sources and include directories
 ################################################################################
@@ -913,7 +976,6 @@ $(eval $(call add_defines,\
 	SPMC_AT_EL3_SEL0_SP \
 	SPMD_SPM_AT_SEL2 \
 	TRANSFER_LIST \
-	CRYPTO_SUPPORT \
 	TRNG_SUPPORT \
 	ERRATA_ABI_SUPPORT \
 	ERRATA_NON_ARM_INTERCONNECT \
@@ -1202,7 +1264,6 @@ ifeq (,$(wildcard ${CHECKPATCH}))
 endif
 endif #(CHECKPATCH)
 
-clean:
 clean:
 	$(s)echo "  CLEAN"
 	$(q)rm -rf $(BUILD_PLAT)
