@@ -6,7 +6,7 @@
 #include <mbedtls/aes.h>
 #include <drivers/auth/crypto_mod.h>
 #include <drivers/auth/mbedtls/mbedtls_common.h>
-#include <drivers/auth/mbedtls/mbedtls_config-3.h>
+#include <drivers/auth/mbedtls/default_mbedtls_config.h>
 
 /* mbed TLS headers */
 #include <mbedtls/gcm.h>
