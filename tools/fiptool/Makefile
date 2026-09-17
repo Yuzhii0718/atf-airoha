@@ -58,6 +58,10 @@ else
   Q :=
 endif
 
+ifneq ($(strip $(TCSUPPORT_UBOOT)),)
+  HOSTCCFLAGS += -DCONFIG_ECNT
+endif
+
 HOSTCC ?= gcc
 
 ifneq (${PLAT},)
