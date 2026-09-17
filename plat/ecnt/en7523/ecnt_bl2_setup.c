@@ -286,6 +286,23 @@ void bl2_el3_plat_arch_setup(void)
 
 }
 
+/*
+ * TF-A 2.15 removed the bl2_el3_* setup hooks: bl2_main() now calls
+ * bl2_early_platform_setup2()/bl2_plat_arch_setup() directly and the platform
+ * is expected to dispatch them.  ECNT always boots BL2 at EL3 (RESET_TO_BL2=1),
+ * so forward to the EL3 implementations above.
+ */
+void bl2_early_platform_setup2(u_register_t arg0, u_register_t arg1,
+			       u_register_t arg2, u_register_t arg3)
+{
+	bl2_el3_early_platform_setup(arg0, arg1, arg2, arg3);
+}
+
+void bl2_plat_arch_setup(void)
+{
+	bl2_el3_plat_arch_setup();
+}
+
 void bl2_el3_plat_prepare_exit(void)
 {
 	jumparch64(BL33_BASE, 0, 0, TZRAM_BASE);
