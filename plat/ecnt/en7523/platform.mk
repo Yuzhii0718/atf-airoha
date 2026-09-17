@@ -102,6 +102,9 @@ ifeq ($(IMAGE_BL21)$(IMAGE_BL22),)
 endif
     include plat/ecnt/common/drivers/flash/flash.mk
 	include lib/lzma/lzma.mk
+# TF-A >= 2.13 gates the GIC driver sources behind USE_GIC_DRIVER;
+# ECNT uses the GICv3 driver (gicv3_base.c only builds with USE_GIC_DRIVER=3).
+USE_GIC_DRIVER				:=	3
 	include drivers/arm/gic/v3/gicv3.mk
 
 
@@ -113,6 +116,7 @@ endif
 
 ifeq ($(IMAGE_BL21)$(IMAGE_BL22),)
 				AUTH_SOURCES		:=	drivers/auth/auth_mod.c					\
+				drivers/auth/auth_util.c						\
 				drivers/auth/img_parser_mod.c						\
 				drivers/auth/tbbr/tbbr_cot_common.c						\
 				drivers/auth/tbbr/tbbr_cot_bl2.c						\
@@ -501,7 +505,7 @@ endif
 
 	BL31_SOURCES		+=					${GICV3_SOURCES}		\
 				${XLAT_TABLES_LIB_SRCS}								\
-				plat/arm/common/arm_gicv3.c							\
+				drivers/arm/gic/v3/gicv3_base.c							\
 				plat/common/plat_gicv3.c							\
 				plat/common/plat_psci_common.c						\
 				drivers/delay_timer/delay_timer.c					\

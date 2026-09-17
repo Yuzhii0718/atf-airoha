@@ -32,6 +32,19 @@ extern int efuse_check_eco(void);
 static entry_point_info_t bl32_ep_info;
 static entry_point_info_t bl33_ep_info;
 static console_t console;
+
+#if USE_GIC_DRIVER == 3
+/*
+ * TF-A >= 2.13 requires the platform to hand the (NULL terminated) list of
+ * GICR frames to the GICv3 driver through gic_set_gicr_frames(). Without it
+ * gic_pcpu_init() walks a NULL gicr_frames pointer and the core hangs in
+ * bl31_main() right after the BL31 banner is printed.
+ */
+static const uintptr_t ecnt_gicr_frames[] = {
+	PLAT_ARM_GICR_BASE,	/* GICR Base address of the primary CPU */
+	0U			/* Zero Termination */
+};
+#endif
 #if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583)
 #define L2C_SRAM_CONFIG
 #endif
@@ -217,9 +230,12 @@ void bl31_platform_setup(void)
 
 	plat_ecnt_io_setup(NULL);
 
-	/* Initialize the gic cpu and distributor interfaces */
-	plat_arm_gic_driver_init();
-	plat_arm_gic_init();
+	/*
+	 * The GIC cpu/distributor interfaces are initialised by bl31_main()
+	 * through the TF-A >= 2.13 USE_GIC_DRIVER hooks (the old
+	 * plat_arm_gic_driver_init()/plat_arm_gic_init() API no longer exists).
+	 */
+
 
 	/* enable SPM mode */
 	/* set bypass_cpu_spic_mode = 0 */
@@ -377,6 +393,14 @@ l2c_sram_verify_fail:
 void bl31_plat_arch_setup(void)
 {
 	uint64_t dram_size = 0;
+
+#if USE_GIC_DRIVER == 3
+	/*
+	 * Must be done before bl31_main() calls gic_pcpu_init(), which probes
+	 * the redistributors through this list.
+	 */
+	gic_set_gicr_frames(ecnt_gicr_frames);
+#endif
 	
 #ifdef L2C_SRAM_CONFIG
     #ifdef L2C_SRAM_VERIFY
@@ -557,3 +581,11 @@ void bl31_prepare_kernel_entry(uint64_t k32_64)
 	cm_prepare_el3_exit(image_type);
 }
 
+/*
+ * TF-A >= 2.13 GIC per-cpu init hook (called by gic_pcpu_init()).
+ * Nothing needed on ECNT.
+ */
+void plat_gic_pre_pcpu_init(unsigned int cpu_idx)
+{
+	(void)cpu_idx;
+}

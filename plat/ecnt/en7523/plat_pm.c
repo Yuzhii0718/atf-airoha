@@ -9,6 +9,7 @@
 
 #include <arch_helpers.h>
 #include <common/debug.h>
+#include <drivers/arm/gic.h>
 #include <drivers/arm/gicv3.h>
 #include <drivers/console.h>
 #include <drivers/delay_timer.h>
@@ -171,7 +172,7 @@ void plat_power_domain_off_check(unsigned long cpu_id)
 	}
 }
 
-static void __dead2 plat_power_domain_down_wfi(const psci_power_state_t *state)
+static void plat_power_domain_down_wfi(const psci_power_state_t *state)
 {
 	unsigned long mpidr = read_mpidr_el1();
 	unsigned long cpu_id = 0;
@@ -188,7 +189,11 @@ static void __dead2 plat_power_domain_down_wfi(const psci_power_state_t *state)
 
 	check_flag[cpu_id] = 1;
 
-	psci_power_down_wfi();
+	/*
+	 * psci_power_down_wfi() was removed by TF-A 2.15: the terminal power
+	 * down (WFI loop) is now performed by the PSCI library through
+	 * psci_pwrdown_cpu_end_terminal() right after this hook returns.
+	 */
 }
 
 static void plat_power_domain_off(const psci_power_state_t *state)
@@ -214,19 +219,19 @@ static void plat_power_domain_off(const psci_power_state_t *state)
 #endif
 
 	/* Prevent interrupts from spuriously waking up this cpu */
-	plat_arm_gic_cpuif_disable();
+	gic_cpuif_disable(plat_my_core_pos());
 
 	/* Turn redistributor off */
-	plat_arm_gic_redistif_off();
+	gic_pcpu_off(plat_my_core_pos());
 }
 
 static void plat_power_domain_on_finish(const psci_power_state_t *state)
 {
 	/* Program GIC per-cpu distributor or re-distributor interface */
-	plat_arm_gic_pcpu_init();
+	gic_pcpu_init(plat_my_core_pos());
 
 	/* Enable GIC CPU interface */
-	plat_arm_gic_cpuif_enable();
+	gic_cpuif_enable(plat_my_core_pos());
 }
 
 /*******************************************************************************
@@ -365,7 +370,7 @@ static const plat_psci_ops_t plat_plat_pm_ops = {
 	.pwr_domain_on					= plat_power_domain_on,
 	.pwr_domain_on_finish			= plat_power_domain_on_finish,
 	.pwr_domain_off					= plat_power_domain_off,
-	.pwr_domain_pwr_down_wfi		= plat_power_domain_down_wfi,
+	.pwr_domain_pwr_down			= plat_power_domain_down_wfi,
 	.system_off						= plat_system_off,
 	.system_reset					= plat_system_reset,
 };
