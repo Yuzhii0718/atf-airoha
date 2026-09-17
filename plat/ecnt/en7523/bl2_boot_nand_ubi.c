@@ -1,0 +1,166 @@
+// SPDX-License-Identifier: BSD-3-Clause
+/*
+ * Copyright (c) 2023, MediaTek Inc. All rights reserved.
+ *
+ * Author: Weijie Gao <weijie.gao@mediatek.com>
+ */
+
+#include <errno.h>
+#include <inttypes.h>
+
+#include <plat_private.h>
+
+#include <arch_helpers.h>
+#include <common/debug.h>
+#include <drivers/io/io_driver.h>
+#include <drivers/io/io_ubi.h>
+#include <drivers/nand.h>
+#include <ecnt_spi_nand_flash.h>
+
+#ifdef OVERRIDE_UBI_START_ADDR
+#define UBI_START_ADDR			OVERRIDE_UBI_START_ADDR
+#ifdef OVERRIDE_UBI_END_ADDR
+#define UBI_END_ADDR			OVERRIDE_UBI_END_ADDR
+#else
+#define UBI_END_ADDR			0
+#endif
+#else
+#define UBI_START_ADDR			0x20000
+#define UBI_END_ADDR			0
+#endif
+
+#define SCRATCH_BUF_OFFSET 0x95000000
+#define BAD_BLOCK_RAW (0)
+extern int nandflash_init(int rom_base);
+extern int nandflash_read(unsigned long from, unsigned long len, u32 *retlen, unsigned char *buf, SPI_NAND_FLASH_RTN_T *status);
+extern int nandflash_read_range(unsigned long from, unsigned long len, unsigned char *buf);
+extern int nandflash_read_oob(unsigned long from, unsigned long len, unsigned char *buf);
+extern int nandflash_write(unsigned long to, unsigned long len, u32 *retlen, unsigned char *buf);
+extern int nandflash_erase(unsigned long offset, unsigned long len);
+extern int en7512_nand_check_block_bad(u32 offset, u32 bmt_block);
+extern int mtk_plat_nand_setup(size_t *page_size, size_t *block_size, uint32_t *size);
+extern void ubispl_init_scan(struct io_ubi_dev_spec *info, int fastmap);
+size_t page_size, block_size;
+uint32_t nand_size;
+
+static int nand_ubispl_is_bad_block(uint32_t pnum)
+{
+	unsigned char bbm;
+	int ret;
+
+	/*
+	 * The bad block marker is the first byte of the spare area of the
+	 * block's first page.  Fetch that single byte instead of going through
+	 * en7512_nand_check_block_bad(), which loads and transfers a whole
+	 * page plus spare area for every query.  The UBI scan issues one query
+	 * per physical erase block, so this is the single hottest spot of the
+	 * FIP lookup.
+	 */
+	ret = nandflash_read_oob((unsigned long)pnum * block_size, 1, &bbm);
+	if (ret) {
+		/*
+		 * Fast path unavailable (SoC ECC) or unreadable page, fall
+		 * back to the full page check.
+		 */
+		return en7512_nand_check_block_bad(pnum * block_size,
+						   BAD_BLOCK_RAW) ? -EIO : 0;
+	}
+
+	return (bbm != 0xff) ? -EIO : 0;
+}
+
+static int nand_ubispl_read(uint32_t pnum, unsigned long offset,
+			    unsigned long len, void *dst)
+{
+	SPI_NAND_FLASH_RTN_T status = SPI_NAND_FLASH_RTN_NO_ERROR;
+	size_t len_read;
+	uint32_t addr;
+	int ret;
+
+	addr = (uint32_t)pnum * block_size + offset;
+
+	/*
+	 * Stream only the bytes that were asked for.  nandflash_read() always
+	 * transfers a complete page plus spare area, which costs ~2KB of PIO
+	 * transfers for a 64 byte VID header.  Fall back to it when the fast
+	 * path is not usable (SoC ECC engine) or the page is unreadable.
+	 */
+	if (!nandflash_read_range(addr, len, dst))
+		return 0;
+
+	ret = nandflash_read(addr, len, &len_read, dst, &status);
+	if (ret) {
+		ERROR("nand_read(%" PRIu32 ") failed with %d. %zu bytes read\n",
+		      addr, ret, len_read);
+		return ret;
+	}
+
+	return 0;
+}
+
+static io_ubi_dev_spec_t nand_ubi_dev_spec = {
+	.ubi = (struct ubi_scan_info *)SCRATCH_BUF_OFFSET,
+	.is_bad_peb = nand_ubispl_is_bad_block,
+	.read = nand_ubispl_read,
+	.fastmap = 1,
+};
+
+static const io_ubi_spec_t ubi_dev_fip_spec = {
+	.vol_id = -1,
+	.vol_name = "fip",
+};
+
+/*
+ * Scan the UBI area to locate the "fip" volume and report how long it took.
+ * The scan is normally done lazily on the first access to the volume; do it
+ * here so the boot time spent scanning UBI can be measured. The result is
+ * cached (init_done) to avoid scanning twice.
+ */
+static void ubi_scan_fip_timed(void)
+{
+	uint64_t freq = read_cntfrq_el0();
+	uint64_t start, delta;
+
+	if (freq == 0)
+		freq = 1;
+
+	start = read_cntpct_el0();
+	ubispl_init_scan(&nand_ubi_dev_spec, nand_ubi_dev_spec.fastmap);
+	delta = read_cntpct_el0() - start;
+
+	NOTICE("UBI scan for fip took %" PRIu64 " us\n",
+	       (delta * 1000000ULL) / freq);
+
+	nand_ubi_dev_spec.init_done = 1;
+}
+
+int mtk_fip_image_setup(uintptr_t *dev_handle, uintptr_t *image_spec)
+{
+	const io_dev_connector_t *dev_con;
+	int ret;
+
+	ret = mtk_plat_nand_setup(&page_size, &block_size, &nand_size);
+	if (ret)
+		return ret;
+
+	nand_ubi_dev_spec.peb_size = block_size;
+	nand_ubi_dev_spec.peb_offset = UBI_START_ADDR / block_size;
+	nand_ubi_dev_spec.peb_count = ((UBI_END_ADDR ?: nand_size) - UBI_START_ADDR) /
+				      block_size;
+	nand_ubi_dev_spec.vid_offset = page_size;
+	nand_ubi_dev_spec.leb_start = page_size * 2;
+
+	ret = register_io_dev_ubi(&dev_con);
+	if (ret)
+		return ret;
+
+	ret = io_dev_open(dev_con, (uintptr_t)&nand_ubi_dev_spec, dev_handle);
+	if (ret)
+		return ret;
+
+	ubi_scan_fip_timed();
+
+	*image_spec = (uintptr_t)&ubi_dev_fip_spec;
+
+	return 0;
+}

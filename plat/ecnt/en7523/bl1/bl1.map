@@ -1,0 +1,97 @@
+
+Discarded input sections
+
+ .text          0x00000000        0x0 bl1_entry.o
+ .data          0x00000000        0x0 bl1_entry.o
+ .bss           0x00000000        0x0 bl1_entry.o
+ .ARM.attributes
+                0x00000000       0x1d bl1_entry.o
+ .text          0x00000000        0x0 bl1_main.o
+ .data          0x00000000        0x0 bl1_main.o
+ .bss           0x00000000        0x0 bl1_main.o
+ .comment       0x00000000       0x47 bl1_main.o
+ .ARM.attributes
+                0x00000000       0x31 bl1_main.o
+
+Memory Configuration
+
+Name             Origin             Length             Attributes
+*default*        0x00000000         0xffffffff
+
+Linker script and memory map
+
+                0x00000000                        . = 0x0
+
+.text           0x00000000      0x45c
+ *(.text.start)
+ .text.start    0x00000000      0x22c bl1_entry.o
+                0x00000000                _bl1_start
+                0x000000e8                bl1_panic
+ *(.text .text.*)
+ .text.spi_cmd  0x0000022c       0x34 bl1_main.o
+ .text.spi_tx   0x00000260       0x1c bl1_main.o
+ .text.spi_flash_read
+                0x0000027c       0xc0 bl1_main.o
+ .text.bl1_plat_init
+                0x0000033c       0xb4 bl1_main.o
+                0x0000033c                bl1_plat_init
+ .text.bl1_boot_next_stage
+                0x000003f0       0x6c bl1_main.o
+                0x000003f0                bl1_boot_next_stage
+
+.glue_7         0x0000045c        0x0
+ .glue_7        0x0000045c        0x0 linker stubs
+
+.glue_7t        0x0000045c        0x0
+ .glue_7t       0x0000045c        0x0 linker stubs
+
+.vfp11_veneer   0x0000045c        0x0
+ .vfp11_veneer  0x0000045c        0x0 linker stubs
+
+.v4_bx          0x0000045c        0x0
+ .v4_bx         0x0000045c        0x0 linker stubs
+
+.iplt           0x0000045c        0x0
+ .iplt          0x0000045c        0x0 bl1_entry.o
+
+.rodata         0x00000460        0x8
+ *(.rodata .rodata.*)
+ .rodata._bl1_cpu_table
+                0x00000460        0x8 bl1_entry.o
+                0x00000460                _bl1_cpu_table
+                0x000007c0                        . = 0x7c0
+
+.vectors        0x000007c0       0x20
+ *(.vectors)
+ .vectors       0x000007c0       0x20 bl1_entry.o
+                0x000007c0                _bl1_vectors
+
+.rel.dyn        0x000007e0        0x0
+ .rel.iplt      0x000007e0        0x0 bl1_entry.o
+
+.data
+ *(.data .data.*)
+ *(.got .got.*)
+
+.igot.plt       0x000007e0        0x0
+ .igot.plt      0x000007e0        0x0 bl1_entry.o
+                0x000007e0                        . = ALIGN (0x8)
+                0x000007e0                        _bl1_image_end = .
+
+.bss            0x000007e0        0x0
+                0x000007e0                        _bss_start = .
+ *(.bss .bss.*)
+ *(COMMON)
+                0x000007e0                        . = ALIGN (0x8)
+                0x000007e0                        _bss_end = .
+
+/DISCARD/
+ *(.comment)
+ *(.note .note.*)
+ *(.ARM.attributes)
+ *(.debug*)
+                0x00000001                        ASSERT ((_bl1_image_end <= 0x800), BL1 image exceeds the 2KB BootROM window)
+LOAD bl1_entry.o
+LOAD bl1_main.o
+OUTPUT(bl1.elf elf32-littlearm)
+LOAD linker stubs
