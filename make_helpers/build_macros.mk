@@ -581,6 +581,11 @@ define MAKE_BL
         $(eval BL_SOURCES := $($(BL)_SOURCES))
         $(eval SOURCES    := $(sort $(BL_SOURCES) $(BL_COMMON_SOURCES) $(PLAT_BL_COMMON_SOURCES)))
         $(eval OBJS       := $(addprefix $(BUILD_DIR)/,$(call SOURCES_TO_OBJS,$(SOURCES))))
+        $(eval REBUILD_SOURCES := $($(BL)_REBUILD_SOURCES))
+        $(eval REBUILD_OBJS    := $(addprefix $(BUILD_DIR)/,$(call SOURCES_TO_OBJS,$(REBUILD_SOURCES))))
+        $(eval UNOPEN_SOURCES  := $($(BL)_UNOPEN_SOURCES))
+        $(eval UNOPEN_OBJS     := $(addprefix $(BUILD_DIR)/,$(call SOURCES_TO_OBJS,$(UNOPEN_SOURCES))))
+        $(eval BL_LINK_OBJS    := $(filter-out $(REBUILD_OBJS) $(UNOPEN_OBJS), $(OBJS)))
         $(eval MAPFILE    := $(call IMG_MAPFILE,$(1)))
         $(eval ELF        := $(call IMG_ELF,$(1)))
         $(eval DUMP       := $(call IMG_DUMP,$(1)))
@@ -612,20 +617,147 @@ endif
 $(eval OBJS += $(MODULE_OBJS))
 
 $(ELF): $(OBJS) $(DEFAULT_LINKER_SCRIPT) $(LINKER_SCRIPTS) | $$$$(@D)/ libraries $(BL_LIBS)
+ifdef CONFIG_ECNT
+ifneq ($(TCSUPPORT_BB_FIX_UNOPEN),0)
+ifeq ($(IMAGE_BL22),1)
+ifneq ($(TCSUPPORT_CPU_EN7581)$(TCSUPPORT_CPU_AN7583)$(TCSUPPORT_CPU_AN7552),)
+	# an7581, an7583, an7552
+	cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl22/efuse* $(BUILD_DIR)/ ;
+	cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl22/Hal_io.o $(BUILD_DIR)/ ;
+	cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl22/DDR3_dram_init.o $(BUILD_DIR)/ ;
+	cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl22/DDR4_dram_init.o $(BUILD_DIR)/ ;
+	cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl22/IPM_actiming_setting_DDR3.o $(BUILD_DIR)/ ;
+	cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl22/IPM_actiming_setting_DDR4.o $(BUILD_DIR)/ ;
+	cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl22/RX_path_auto_gen.o $(BUILD_DIR)/ ;
+	cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl22/TX_path_auto_gen.o $(BUILD_DIR)/ ;
+	cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl22/TX_RX_auto_gen_library.o $(BUILD_DIR)/ ;
+	cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl22/dramc_actiming.o $(BUILD_DIR)/ ;
+	cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl22/MD32_initial.o $(BUILD_DIR)/ ;
+	cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl22/dramc_dv_dut.o $(BUILD_DIR)/ ;
+	cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl22/dramc_utility.o $(BUILD_DIR)/ ;
+	cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl22/DIG_NONSHUF_config.o $(BUILD_DIR)/ ;
+	cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl22/DIG_SHUF_config.o $(BUILD_DIR)/ ;
+	cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl22/DRAMC_SUBSYS_config.o $(BUILD_DIR)/ ;
+	cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl22/HW_FUNC_MANAGE.o $(BUILD_DIR)/ ;
+	cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl22/ANA_init_config.o $(BUILD_DIR)/ ;
+	cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl22/dramc_pi_basic_api.o $(BUILD_DIR)/ ;
+	cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl22/dramc_pi_calibration_api.o $(BUILD_DIR)/ ;
+	cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl22/dramc_dvfs.o $(BUILD_DIR)/ ;
+	cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl22/dramc_pi_main.o $(BUILD_DIR)/ ;
+	cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl22/dramc.o $(BUILD_DIR)/ ;
+
+	-cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl22/dramc_selfrefresh_api.o $(BUILD_DIR)/ ;
+	-cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl22/dramtest.o $(BUILD_DIR)/ ;
+	-cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl22/ecnt_avs.o $(BUILD_DIR)/ ;
+else
+	# en7523
+	cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl22/efuse* $(BUILD_DIR)/ ;
+	cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl22/hal_io.o $(BUILD_DIR)/ ;
+	cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl22/dramc_pi_basic_api.o $(BUILD_DIR)/ ;
+	cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl22/dramc_pi_calibration_api.o $(BUILD_DIR)/ ;
+	cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl22/dramc_pi_main.o $(BUILD_DIR)/ ;
+	cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl22/dramc.o $(BUILD_DIR)/ ;
+endif
+endif
+ifeq ($(IMAGE_BL23),1)
+	cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl23/efuse* $(BUILD_DIR)/ ;
+	cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl23/ecnt_npu_img.o $(BUILD_DIR)/ ;
+endif
+	if [ -d $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl31 ] && \
+	   [ "$$(basename $$(notdir $$@))" = "bl31" ] ; then \
+		cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl31/efuse* $(BUILD_DIR)/ ; \
+		cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl31/Hal_io.o $(BUILD_DIR)/ ; \
+		cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl31/DDR3_dram_init.o $(BUILD_DIR)/ ; \
+		cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl31/DDR4_dram_init.o $(BUILD_DIR)/ ; \
+		cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl31/IPM_actiming_setting_DDR3.o $(BUILD_DIR)/ ; \
+		cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl31/IPM_actiming_setting_DDR4.o $(BUILD_DIR)/ ; \
+		cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl31/RX_path_auto_gen.o $(BUILD_DIR)/ ; \
+		cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl31/TX_path_auto_gen.o $(BUILD_DIR)/ ; \
+		cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl31/TX_RX_auto_gen_library.o $(BUILD_DIR)/ ; \
+		cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl31/dramc_actiming.o $(BUILD_DIR)/ ; \
+		cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl31/MD32_initial.o $(BUILD_DIR)/ ; \
+		cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl31/dramc_dv_dut.o $(BUILD_DIR)/ ; \
+		cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl31/dramc_utility.o $(BUILD_DIR)/ ; \
+		cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl31/DIG_NONSHUF_config.o $(BUILD_DIR)/ ; \
+		cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl31/DIG_SHUF_config.o $(BUILD_DIR)/ ; \
+		cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl31/DRAMC_SUBSYS_config.o $(BUILD_DIR)/ ; \
+		cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl31/HW_FUNC_MANAGE.o $(BUILD_DIR)/ ; \
+		cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl31/ANA_init_config.o $(BUILD_DIR)/ ; \
+		cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl31/dramc_pi_basic_api.o $(BUILD_DIR)/ ; \
+		cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl31/dramc_pi_calibration_api.o $(BUILD_DIR)/ ; \
+		cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl31/dramc_dvfs.o $(BUILD_DIR)/ ; \
+		cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl31/dramc_pi_main.o $(BUILD_DIR)/ ; \
+		cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl31/dramc.o $(BUILD_DIR)/ ; \
+		if [ -f $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl31/dramc_selfrefresh_api.o ] ; then \
+			cp -rf $(ECNT_PLAT)/blobs/$(SOC_SUB_DIR)/bl31/dramc_selfrefresh_api.o $(BUILD_DIR)/ ; \
+		fi \
+	fi
+endif
+endif
+
 	$$(s)echo "  LD      $$@"
-ifeq ($($(ARCH)-ld-id),arm-link)
+ifdef MAKE_BUILD_STRINGS
+	$(call MAKE_BUILD_STRINGS,$(BUILD_DIR)/build_message.o)
+else
+	@echo 'const char build_message[] = "Built : "$(BUILD_MESSAGE_TIMESTAMP); \
+	       const char version_string[] = "${VERSION_STRING}"; \
+	       const char version[] = "${VERSION}";' | \
+		$$(CC) $$(TF_CFLAGS) $$(CFLAGS) -xc -c - -o $(BUILD_DIR)/build_message.o
+endif
+ifneq ($(findstring armlink,$(notdir $(LD))),)
 	$$(q)$($(ARCH)-ld) -o $$@ $$(TF_LDFLAGS) $$(LDFLAGS) $(BL_LDFLAGS) --entry=${1}_entrypoint \
 		--predefine=$(call escape-shell,-D__LINKER__=$(__LINKER__)) \
 		--predefine=$(call escape-shell,-DTF_CFLAGS=$(TF_CFLAGS)) \
 		--map --list="$(MAPFILE)" --scatter=${PLAT_DIR}/scat/${1}.scat \
 		$(LDPATHS) $(LIBWRAPPER) $(LDLIBS) $(BL_LIBS) $(OBJS)
+else ifneq ($(findstring gcc,$(notdir $(LD))),)
+	$$(q)$($(ARCH)-ld) -o $$@ $$(TF_LDFLAGS) $$(LDFLAGS) -Wl,-Map=$(MAPFILE) \
+		$(addprefix -Wl$(comma)--script$(comma),$(LINKER_SCRIPTS)) -Wl,--script,$(DEFAULT_LINKER_SCRIPT) \
+		$(BUILD_DIR)/build_message.o \
+		$(sort $(OBJS)) $(LDPATHS) $(LIBWRAPPER) $(LDLIBS) $(BL_LIBS)
 else
-	$$(q)$($(ARCH)-ld) -o $$@ $$(TF_LDFLAGS) $$(LDFLAGS) $(BL_LDFLAGS) \
-		$(GNU_LINKER_ARGS) $(LDPATHS) \
-		$(call ld_prefix,--start-group) \
-			$(OBJS) $(LIBWRAPPER) $(LDLIBS) $(BL_LIBS) \
-		$(call ld_prefix,--end-group)
+ifdef CONFIG_ECNT
+ifneq ($(TCSUPPORT_BL2_OPTIMIZATION),)
+ifneq ($(TCSUPPORT_BB_FIX_UNOPEN),0)
+	$$(q)$$(LD) -o $$@ $$(TF_LDFLAGS) $$(LDFLAGS) $(BL_LDFLAGS) -Map=$(MAPFILE) \
+		$(addprefix -T ,$(LINKER_SCRIPTS)) --script $(DEFAULT_LINKER_SCRIPT) \
+		$(BUILD_DIR)/build_message.o \
+		$(sort $(OBJS) $(UNOPEN_OBJS)) $(LDPATHS) $(LIBWRAPPER) $(LDLIBS) $(BL_LIBS)
+else
+	$$(q)$$(LD) -o $$@ $$(TF_LDFLAGS) $$(LDFLAGS) $(BL_LDFLAGS) -Map=$(MAPFILE) \
+		$(addprefix -T ,$(LINKER_SCRIPTS)) --script $(DEFAULT_LINKER_SCRIPT) \
+		$(BUILD_DIR)/build_message.o \
+		$(sort $(OBJS)) $(LDPATHS) $(LIBWRAPPER) $(LDLIBS) $(BL_LIBS)
 endif
+else
+ifneq ($(TCSUPPORT_BB_FIX_UNOPEN),0)
+	$$(q)$$(LD) -o $$@ $$(TF_LDFLAGS) $$(LDFLAGS) $(BL_LDFLAGS) -Map=$(MAPFILE) \
+		$(addprefix -T ,$(LINKER_SCRIPTS)) --script $(DEFAULT_LINKER_SCRIPT) \
+		$(BUILD_DIR)/build_message.o \
+		$(sort $(REBUILD_OBJS) $(UNOPEN_OBJS)) $(LDPATHS) $(LIBWRAPPER) $(LDLIBS) $(BL_LIBS)
+else
+	$$(q)$$(LD) -o $$@ $$(TF_LDFLAGS) $$(LDFLAGS) $(BL_LDFLAGS) -Map=$(MAPFILE) \
+		$(addprefix -T ,$(LINKER_SCRIPTS)) --script $(DEFAULT_LINKER_SCRIPT) \
+		$(BUILD_DIR)/build_message.o \
+		$(sort $(OBJS)) $(LDPATHS) $(LIBWRAPPER) $(LDLIBS) $(BL_LIBS)
+
+	if [ "$$(basename $$(notdir $$@))" = "bl2" ] ; then \
+		$$(AR) rcs $(BUILD_DIR)/libbl2.a $(BL_LINK_OBJS) ; \
+		$$(LD) -o $$@ $$(TF_LDFLAGS) $$(LDFLAGS) $(BL_LDFLAGS) -Map=$(MAPFILE) \
+			$(addprefix -T ,$(LINKER_SCRIPTS)) --script $(DEFAULT_LINKER_SCRIPT) \
+			$(BUILD_DIR)/build_message.o \
+			$(sort $(REBUILD_OBJS) $(UNOPEN_OBJS)) -L$(BUILD_DIR) -lbl2 $(LDPATHS) $(LIBWRAPPER) $(LDLIBS) $(BL_LIBS) ; \
+	fi
+endif
+endif
+else
+	$$(q)$$(LD) -o $$@ $$(TF_LDFLAGS) $$(LDFLAGS) $(BL_LDFLAGS) -Map=$(MAPFILE) \
+		$(addprefix -T ,$(LINKER_SCRIPTS)) --script $(DEFAULT_LINKER_SCRIPT) \
+		$(BUILD_DIR)/build_message.o \
+		$(sort $(OBJS)) $(LDPATHS) $(LIBWRAPPER) $(LDLIBS) $(BL_LIBS)
+endif
+endif
+
 ifeq ($(DISABLE_BIN_GENERATION),1)
 	$(s)echo
 	$(s)echo "Built $$@ successfully"
@@ -643,6 +775,25 @@ $(BIN): $(ELF) | $$$$(@D)/
 	$(s)echo "Built $$@ successfully"
 	$(s)echo
 
+ifeq ($(IMAGE_BL22),1)
+	$$(q)if [ "$$(basename $$(notdir $$@))" = "bl2" ] ; then \
+	$(TOOLS_DIR)/lzma e $$@ bl22.lzma ; \
+	fi
+endif
+
+ifeq ($(IMAGE_BL23),1)
+	$$(q)if [ "$$(basename $$(notdir $$@))" = "bl2" ] ; then \
+	$(TOOLS_DIR)/lzma e $$@ bl23.lzma ; \
+	fi
+endif
+
+ifeq ($(IMAGE_BL21),1)
+	$$(q)if [ "$$(basename $$(notdir $$@))" = "bl2" ] ; then \
+	cp $$@ bl21.bin ; \
+	dd if=/dev/null of=bl21.bin bs=1 count=0 seek=14336 ; \
+	fi
+endif
+
 .PHONY: $(1)
 ifeq ($(DISABLE_BIN_GENERATION),1)
 $(1): $(ELF) $(DUMP)
@@ -659,7 +810,6 @@ $(if $(2),$(call TOOL_ADD_IMG_PAYLOAD,$(BL),$(BIN),--$(2),$(ENC_BIN),$(3), \
 else
 $(if $(2),$(call TOOL_ADD_IMG_PAYLOAD,$(BL),$(BIN),--$(2),$(BIN),$(3)))
 endif
-
 endef
 
 # Convert device tree source file names to matching blobs

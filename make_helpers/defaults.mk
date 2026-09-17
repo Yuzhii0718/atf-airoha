@@ -33,14 +33,14 @@ ARM_ARCH_MINOR			:= 0
 BASE_COMMIT			:= origin/master
 
 # Execute BL2 at EL3
-RESET_TO_BL2			:= 0
+RESET_TO_BL2			:= 1
 
 # Only use SP packages if SP layout JSON is defined
 BL2_ENABLE_SP_LOAD		:= 0
 
 # BL2 image is stored in XIP memory, for now, this option is only supported
 # when RESET_TO_BL2 is 1.
-BL2_IN_XIP_MEM			:= 0
+BL2_IN_XIP_MEM			:= 1
 
 # Do dcache invalidate upon BL2 entry at EL3
 BL2_INV_DCACHE			:= 1
@@ -73,7 +73,7 @@ CTX_INCLUDE_SVE_REGS		:= 0
 DEBUG				:= 0
 
 # By default disable authenticated decryption support.
-DECRYPTION_SUPPORT		:= none
+DECRYPTION_SUPPORT		:= aes_gcm
 
 # Build platform
 DEFAULT_PLAT			:= fvp
@@ -83,7 +83,7 @@ DISABLE_BIN_GENERATION		:= 0
 
 # Enable capability to disable authentication dynamically. Only meant for
 # development platforms.
-DYN_DISABLE_AUTH		:= 0
+DYN_DISABLE_AUTH		:= 1
 
 # Enable the SIMD crypto extension feature. The flags suppose to be in
 # arch_features.mk but since mbedtls_common.mk is included before arch_features.mk,
@@ -124,6 +124,9 @@ ENCRYPT_BL31			:= 0
 # By default BL32 encryption disabled
 ENCRYPT_BL32			:= 0
 
+# By default BL33 encryption disabled
+ENCRYPT_BL33			:= 0
+
 # Default dummy firmware encryption key
 ENC_KEY	:= 1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
 
@@ -155,7 +158,7 @@ BL2_FIP_NAME			:= bl2_fip.bin
 FW_ENC_STATUS			:= 0
 
 # For Chain of Trust
-GENERATE_COT			:= 0
+GENERATE_COT			:= 1
 
 # Default number of 512 blocks per bitlock
 RME_GPT_BITLOCK_BLOCK		:= 1
@@ -238,7 +241,7 @@ ARCH_FEATURE_AVAILABILITY	:= 0
 RESET_TO_BL31			:= 0
 
 # For Chain of Trust
-SAVE_KEYS			:= 0
+SAVE_KEYS			:= 1
 
 # Software Delegated Exception support
 SDEI_SUPPORT			:= 0
@@ -302,7 +305,7 @@ SPMD_SPM_AT_SEL2		:= 1
 SPIN_ON_BL1_EXIT		:= 0
 
 # Flags to build TF with Trusted Boot support
-TRUSTED_BOARD_BOOT		:= 0
+TRUSTED_BOARD_BOOT		:= 1
 
 # Build option to choose whether Trusted Firmware uses Coherent memory or not.
 USE_COHERENT_MEM		:= 1
@@ -416,7 +419,7 @@ PSA_CRYPTO			:= 0
 # getc() support from the console(s).
 # Disabled by default because it constitutes an attack vector into TF-A. It
 # should only be enabled if there is a use case for it.
-ENABLE_CONSOLE_GETC		:= 0
+ENABLE_CONSOLE_GETC		:= 1
 
 # Build option to disable EL2 when it is not used.
 # Most platforms switch from EL3 to NS-EL2 and hence the unused NS-EL2
