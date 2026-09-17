@@ -91,6 +91,8 @@ func bl31_entrypoint
 	 * --------------------------------------------------------------------
 	 */
 	bl	bl31_main
+	#bl  _bl31_debug_delay
+	b	el3_exit
 
 	/* --------------------------------------------------------------------
 	 * Clean the .data & .bss sections to main memory. This ensures
