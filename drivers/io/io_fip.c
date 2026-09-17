@@ -479,3 +479,23 @@ int fip_dev_get_plat_toc_flag(io_dev_info_t *dev_info, uint16_t *plat_toc_flag)
 
 	return 0;
 }
+
+
+#if(1)
+int fip_file_enc(uintptr_t local_image_handle)
+{
+	io_entity_t *entity = (io_entity_t *) local_image_handle;
+
+	if (entity == NULL)
+	{
+		return -EINVAL;
+	}
+
+	if (entity->info == 0)
+	{
+		return -EINVAL;
+	}
+
+	return (((fip_file_state_t *) entity->info)->entry.flags & FW_ENCRYPTION);
+}
+#endif

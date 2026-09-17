@@ -42,6 +42,7 @@
 /*
  * Perform some static checking and call the library initialization function
  */
+#if CRYPTO_SUPPORT
 void crypto_mod_init(void)
 {
 	assert(crypto_lib_desc.name != NULL);
@@ -63,6 +64,7 @@ CRYPTO_SUPPORT == CRYPTO_AUTH_VERIFY_AND_HASH_CALC
 	crypto_lib_desc.init();
 	INFO("Using crypto library '%s'\n", crypto_lib_desc.name);
 }
+#endif
 
 #if CRYPTO_SUPPORT == CRYPTO_AUTH_VERIFY_ONLY || \
 CRYPTO_SUPPORT == CRYPTO_AUTH_VERIFY_AND_HASH_CALC

@@ -744,6 +744,8 @@ size_t mmc_erase_blocks(int lba, size_t size)
 		return 0;
 	}
 
+	mdelay(100);
+
 	do {
 		ret = mmc_device_state();
 		if (ret < 0) {
