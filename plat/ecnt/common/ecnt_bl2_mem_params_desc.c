@@ -79,7 +79,7 @@ static bl_mem_params_node_t bl2_mem_params_descs[] = {
 #endif
 };
 
-#if defined(IMAGE_BL23) && (defined(TCSUPPORT_UBI_SUPPORT) || defined(TCSUPPORT_EMMC))
+#if defined(IMAGE_BL23)
 static bl_mem_params_node_t bl2_mem_params_descs_backup[sizeof(bl2_mem_params_descs) / sizeof(bl2_mem_params_descs[0])];
 
 void bl2_mem_params_backup(void)

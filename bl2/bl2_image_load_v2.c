@@ -18,7 +18,7 @@
 
 #include <platform_def.h>
 
-#if defined(IMAGE_BL23) && (defined(TCSUPPORT_UBI_SUPPORT) || defined(TCSUPPORT_EMMC))
+#if defined(IMAGE_BL23)
 extern void bl2_mem_params_backup(void);
 extern void bl2_mem_params_restore(void);
 extern void plat_ecnt_io_switch_to_memmap(void);
@@ -102,37 +102,40 @@ struct entry_point_info *bl2_load_images()
 	bl_params_t *bl2_to_next_bl_params;
 	int err;
 
-#if defined(IMAGE_BL23) && (defined(TCSUPPORT_UBI_SUPPORT) || defined(TCSUPPORT_EMMC))
+#if defined(IMAGE_BL23)
 	bl2_mem_params_backup();
 #endif
 	err = bl2_do_load_images();
 	if (err != 0) {
-#if !(defined(IMAGE_BL23) && (defined(TCSUPPORT_UBI_SUPPORT) || defined(TCSUPPORT_EMMC)))
+#if !defined(IMAGE_BL23)
 		plat_error_handler(err);
 #else
-		/*
-		 * bl2_plat_handle_pre_image_load() and load_auth_image() may change contents
-		 * of bl2_node_info->image_info, thus next call of bl2_do_load_images() will
-		 * finish by panic.
-		 *
-		 * Restore original values of bl2_node_info->image_info to avoid an issue.
-		 */
-		bl2_mem_params_restore();
-		/*
-		 * In the case of booting from UBI, ubi I/O driver will be used to read
-		 * BL31/U-Boot FIP image. This is not suitable.
-		 *
-		 * Switch to memmap based driver suitable for image reading via xmodem.
-		 */
-		plat_ecnt_io_switch_to_memmap();
+		for (;;) {
+			/*
+			 * bl2_plat_handle_pre_image_load() and load_auth_image()
+			 * may change contents of bl2_node_info->image_info, thus
+			 * the next call of bl2_do_load_images() would finish by
+			 * panic. Restore original values to avoid the issue.
+			 */
+			bl2_mem_params_restore();
+			/*
+			 * When booting from UBI, the ubi I/O driver is used to read
+			 * the BL31/U-Boot FIP image, which is unsuitable for xmodem
+			 * recovery. Switch to the memmap based driver instead.
+			 */
+			plat_ecnt_io_switch_to_memmap();
 
-		printf("BL31 + U-Boot FIP is damaged, loading via xmodem\n");
-		fip_image_xmodem_load((void*)(uintptr_t)PLAT_ECNT_FIP_BASE,
-				      PLAT_ECNT_FIP_MAX_SIZE);
+			ERROR("Stored BL31 + U-Boot FIP failed (%i)\n", err);
+			fip_image_xmodem_load((void *)(uintptr_t)PLAT_ECNT_FIP_BASE,
+					      PLAT_ECNT_FIP_MAX_SIZE);
 
-		err = bl2_do_load_images();
-		if (err)
-			plat_error_handler(err);
+			err = bl2_do_load_images();
+			if (err == 0)
+				break;
+
+			ERROR("Downloaded FIP failed verification (%i); retrying\n",
+			      err);
+		}
 #endif
 	}
 

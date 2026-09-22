@@ -37,7 +37,6 @@
 static meminfo_t bl2_el3_tzram_layout;
 static console_t console;
 static hw_trap_t hw_trap;
-static int debug_flag = 0;
 
 #if defined(IMAGE_BL23) && defined(TCSUPPORT_EMMC)
 static io_block_spec_t mmc_dev_bl31_fip_spec = {
@@ -62,78 +61,20 @@ extern void tests_on_l2c_sram(void);
 
 void hw_trap_init(void)
 {
-	int mode = 0;
 	uint32_t hwtrap_cfg = (mmio_read_32(EN7523_HWTRAP_CONF) & HWTRAP_MASK);
 
 	memset(&hw_trap, 0, sizeof(hw_trap));
 
-	if (debug_flag)
-	{
-		mode = mmio_read_32(EN7523_SCREG_WF0);
-
-		switch (mode)
-		{
+	hw_trap.skip_fw_upgrade =
+		!(mmio_read_32(EN7523_SEC_SSR) & BOOT_SEL_BY_HWTRAP);
+	hw_trap.fw_upgrade_mode =
+		!(mmio_read_32(EN7523_HWTRAP_CONF) & HWTRAP_FW_UPGRADE);
 #if (!defined(TCSUPPORT_CPU_AN7552) && !defined(TCSUPPORT_CPU_AN7583))
-			case DBG_INIC_MODE:
-			{
-				hw_trap.inc_mode = 1;
+	hw_trap.inc_mode = (hwtrap_cfg == HWTRAP_INIC_MODE);
 #if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583)
-				hw_trap.inc_mdio_mode = 0;
-#endif
-				hw_trap.fw_upgrade_mode = 0;
-				hw_trap.skip_fw_upgrade = 0;
-				NOTICE("DBG_INIC_MODE\n");
-				break;
-			}
-#if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583)
-			case DBG_INIC_MDIO_MODE:
-			{
-				hw_trap.inc_mode = 0;
-				hw_trap.inc_mdio_mode = 1;
-				hw_trap.fw_upgrade_mode = 0;
-				hw_trap.skip_fw_upgrade = 0;
-				NOTICE("DBG_INIC_MDIO_MODE\n");
-				break;
-			}
+	hw_trap.inc_mdio_mode = (hwtrap_cfg == HWTRAP_INIC_MDIO_MODE);
 #endif
 #endif
-			case DBG_FWU_MODE:
-			{
-				hw_trap.inc_mode = 0;
-#if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583)
-				hw_trap.inc_mdio_mode = 0;
-#endif
-				hw_trap.fw_upgrade_mode = 1;
-				hw_trap.skip_fw_upgrade = 0;
-				NOTICE("DBG_FWU_MODE\n");
-				break;
-			}
-			case DBG_FLASH_MODE:
-			{
-				hw_trap.inc_mode = 0;
-#if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583)
-				hw_trap.inc_mdio_mode = 0;
-#endif
-				hw_trap.fw_upgrade_mode = 0;
-				hw_trap.skip_fw_upgrade = 0;
-				NOTICE("DBG_FLASH_MODE\n");
-				break;
-			}
-			default:
-				NOTICE("Unknow Debug mode\n");
-		}
-	}
-	else
-	{
-		hw_trap.skip_fw_upgrade	= !(mmio_read_32(EN7523_SEC_SSR) & BOOT_SEL_BY_HWTRAP);
-		hw_trap.fw_upgrade_mode	= !(mmio_read_32(EN7523_HWTRAP_CONF) & HWTRAP_FW_UPGRADE);
-#if (!defined(TCSUPPORT_CPU_AN7552) && !defined(TCSUPPORT_CPU_AN7583))
-		hw_trap.inc_mode 		= (hwtrap_cfg == HWTRAP_INIC_MODE);
-#if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583)
-		hw_trap.inc_mdio_mode	= (hwtrap_cfg == HWTRAP_INIC_MDIO_MODE);
-#endif
-#endif
-	}
 
 	SET_IS_SPI_CONTROLLER_ECC(0);
 
@@ -359,12 +300,35 @@ void bl2_plat_preload_setup_optimize(void)
 }
 #endif
 
-#if defined(IMAGE_BL23) && (defined(TCSUPPORT_UBI_SUPPORT) || defined(TCSUPPORT_EMMC))
+#if defined(IMAGE_BL23)
+extern void plat_ecnt_io_switch_to_memmap(void);
+
 int fip_image_xmodem_load(void *loadaddr, int max_size)
 {
-	printf("Press x to load BL31 + U-Boot FIP\n");
-	while (console.getc(&console) != 'x');
-	return XModemReceive(&console, max_size, loadaddr);
+	int len;
+
+	for (;;) {
+		printf("Press x to load BL31 + U-Boot FIP via XMODEM\n");
+		while (console.getc(&console) != 'x')
+			;
+
+		len = XModemReceive(&console, max_size, loadaddr);
+		if (len > 0 && plat_check_header(loadaddr) != 0) {
+			NOTICE("Received FIP: %d bytes\n", len);
+			return len;
+		}
+
+		ERROR("XMODEM FIP is incomplete or has an invalid TOC header (%d)\n",
+		      len);
+	}
+}
+
+static void fip_preload_xmodem_recover(const char *reason)
+{
+	ERROR("%s; entering XMODEM recovery\n", reason);
+	plat_ecnt_io_switch_to_memmap();
+	fip_image_xmodem_load((void *)(uintptr_t)PLAT_ECNT_FIP_BASE,
+			      PLAT_ECNT_FIP_MAX_SIZE);
 }
 #endif
 
@@ -372,7 +336,6 @@ void bl2_plat_preload_setup(void)
 {
 #if !defined(IMAGE_BL21) && !defined(IMAGE_BL22)
 	FLASH_READ_STATUS_T flash_read_status = FLASH_READ_STATUS_CORRECT;
-	int fwu_img_len = PLAT_ECNT_FIP_MAX_SIZE + PLAT_ECNT_MV_DATA_SIZE;
 	int fip_offset = PLAT_ECNT_FIP_OFFSET;
 #endif
 
@@ -389,7 +352,6 @@ void bl2_plat_preload_setup(void)
 	if (plat_get_dual_boot())
 	{
 		fip_offset += PLAT_ECNT_MULTI_BOOT_SIZE;
-		fwu_img_len += PLAT_ECNT_MULTI_BOOT_SIZE;
 	}
 
 #ifdef INC_MODE
@@ -468,7 +430,11 @@ void bl2_plat_preload_setup(void)
 			}
 			else
 			{
+#if defined(IMAGE_BL23)
+				fip_preload_xmodem_recover("FIP preload read failed");
+#else
 				panic();
+#endif
 			}
 		}
 	}
@@ -483,7 +449,11 @@ void bl2_plat_preload_setup(void)
 		else
 #endif
 		{
+#if defined(IMAGE_BL23)
+			fip_preload_xmodem_recover("FIP preload TOC header is invalid");
+#else
 			panic();
+#endif
 		}
 	}
 #endif
@@ -498,7 +468,7 @@ void bl2_plat_preload_setup(void)
 		if (flash_read(mmc_dev_bl31_fip_spec.offset,
 			       mmc_dev_bl31_fip_spec.length,
 			       (uint8_t *) PLAT_ECNT_FIP_BASE) != FLASH_READ_STATUS_CORRECT)
-			panic();
+			fip_preload_xmodem_recover("BL31 + U-Boot FIP read failed");
 	}
 #endif
 }
@@ -506,8 +476,17 @@ void bl2_plat_preload_setup(void)
 void bl2_platform_setup(void)
 {
 #if !defined(IMAGE_BL21) && !defined(IMAGE_BL22)
+	FLASH_INIT_T flash_status;
+
 	hw_trap_init();
-	flash_init(&hw_trap);
+	flash_status = flash_init(&hw_trap);
+	if (flash_status != FLASH_INIT_SUCCESS)
+		ERROR("BL23 storage setup failed: status=%d\n", flash_status);
+	/*
+	 * A failed storage backend is intentionally non-fatal here: it will
+	 * resurface as a flash_read() failure during preload / load, which
+	 * routes the boot into the XMODEM recovery loop instead of bricking.
+	 */
 	plat_ecnt_io_setup(&hw_trap);
 #endif
 }
@@ -516,13 +495,13 @@ void bl2_platform_setup(void)
 int bl2_plat_handle_post_image_load(unsigned int image_id)
 {
 	bl_mem_params_node_t *bl_mem_params = get_bl_mem_params_node(image_id);
+	int ret;
 
 	if (!(bl_mem_params->image_info.h.attr & IMAGE_ATTRIB_SKIP_LOADING))
 	{
-		if (image_decompress(&(bl_mem_params->image_info)))
-		{
-			panic();
-		}
+		ret = image_decompress(&(bl_mem_params->image_info));
+		if (ret)
+			return ret;
 	}
 
 	#if defined(TCSUPPORT_TPL_ENC)

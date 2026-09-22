@@ -433,7 +433,7 @@ int fill_io_block_spec_gpt(io_block_spec_t *spec, const char *name)
 }
 #endif
 
-#if defined(IMAGE_BL23) && (defined(TCSUPPORT_UBI_SUPPORT) || defined(TCSUPPORT_EMMC))
+#if defined(IMAGE_BL23)
 void plat_ecnt_io_switch_to_memmap(void)
 {
 	policies[FIP_IMAGE_ID] = &fip_memmap_policy;
@@ -457,7 +457,11 @@ void plat_ecnt_io_setup(const hw_trap_t *hw_trap)
 		policies[FIP_IMAGE_ID] = &fip_ubi_policy;
 		io_result = mtk_fip_image_setup(&ubi_dev_handle,
 				(uintptr_t *)&policies[FIP_IMAGE_ID]->image_spec);
-		assert(io_result == 0);
+		if (io_result != 0) {
+			ERROR("Failed to initialize NAND UBI FIP source (%i)\n",
+			      io_result);
+			policies[FIP_IMAGE_ID] = &fip_memmap_policy;
+		}
 	}
 #endif
 
@@ -467,36 +471,44 @@ void plat_ecnt_io_setup(const hw_trap_t *hw_trap)
 		int ret = airoha_mmc_gpt_image_setup(&mmc_dev_uda_handle,
 						     (uintptr_t *)&policies[GPT_IMAGE_ID]->image_spec,
 						     (uintptr_t *)&policies[BKUP_GPT_IMAGE_ID]->image_spec);
-		if (ret)
-			panic();
-
-		airoha_mmc_gpt_init();
+		if (ret != 0) {
+			ERROR("Failed to initialize eMMC GPT FIP source (%i); "
+			      "falling back to memmap\n", ret);
+		} else {
+			airoha_mmc_gpt_init();
+		}
 	}
 #endif
 
 	io_result = register_io_dev_fip(&fip_dev_con);
-	assert(io_result == 0);
+	if (io_result != 0)
+		ERROR("Failed to register FIP I/O device (%i)\n", io_result);
 
 	io_result = register_io_dev_memmap(&memmap_dev_con);
-	assert(io_result == 0);
+	if (io_result != 0)
+		ERROR("Failed to register memmap I/O device (%i)\n", io_result);
 
 	/* Open connections to devices and cache the handles */
 	io_result = io_dev_open(fip_dev_con, (uintptr_t)NULL,
 				&fip_dev_handle);
-	assert(io_result == 0);
+	if (io_result != 0)
+		ERROR("Failed to open FIP I/O device (%i)\n", io_result);
 
 	io_result = io_dev_open(memmap_dev_con, (uintptr_t)NULL,
 				&memmap_dev_handle);
-	assert(io_result == 0);
+	if (io_result != 0)
+		ERROR("Failed to open memmap I/O device (%i)\n", io_result);
 
 #if !defined(TCSUPPORT_UBI_SUPPORT) && !defined(TCSUPPORT_EMMC)
 	static const io_dev_connector_t *enc_dev_con;
 	io_result = register_io_dev_enc(&enc_dev_con);
-	assert(io_result == 0);
+	if (io_result != 0)
+		ERROR("Failed to register ENC I/O device (%i)\n", io_result);
 
 	io_result = io_dev_open(enc_dev_con, (uintptr_t)NULL,
 				&enc_dev_handle);
-	assert(io_result == 0);
+	if (io_result != 0)
+		ERROR("Failed to open ENC I/O device (%i)\n", io_result);
 #endif
 
 	/* Ignore improbable errors in release builds */
