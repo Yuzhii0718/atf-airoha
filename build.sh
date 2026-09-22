@@ -2,10 +2,14 @@
 #===============================================================================
 # build.sh - Universal SOC (an7581 / an7583 / an7552 / en7523) BL2/BL31 build
 #
-# Usage: SOC=<an7581|an7583|an7552|en7523> [OPTEE=yes|no] [PARALLEL_NAND=yes|no] \
+# Usage: SOC=<an7581|an7583|an7552|en7523> [OPTEE=yes|no] \
 #                                    ./build.sh [bl1|bl2|bl31|all]
 #   OPTEE=yes enables OP-TEE (BL32) support, default: no
-#   PARALLEL_NAND=yes adds the parallel (raw) NAND backend to BL2, default: no
+#
+#   Parallel (raw) NAND support for an7581 / an7583 is compiled into BL2 by
+#   default.  The NFI controller auto-detects SPI-NAND vs parallel NAND at
+#   runtime (nfi_type()), so the backend is only selected when the boot source
+#   is actually parallel NAND and never changes the SPI-NAND path.
 #
 #   an7581 / an7583 : BL2 (aarch32) + BL31 built from source (aarch64).
 #   an7552 : BL2 (aarch32) + BL31 built from source (aarch64).
@@ -15,9 +19,10 @@
 #           No prebuilt BL1/BL31 blobs are used anymore.
 #
 # Feature switches (UBI/GPT FIP storage, BL31 FIP offset override, SPI-NAND
-# ECC DMA reads, parallel NAND, OP-TEE) mirror the per-SOC scripts
+# ECC DMA reads, OP-TEE) mirror the per-SOC scripts
 # build-an7581.sh / build-an7583.sh / build-an7552.sh / build-en7523.sh under
-# scripts/.
+# scripts/.  Parallel NAND is no longer a switch: it is compiled in by default
+# for an7581 / an7583 (see the PARALLEL_NAND_* setup below).
 #===============================================================================
 
 set -e
@@ -43,7 +48,7 @@ SOC="${SOC,,}" # Transform to lowercase
 
 if [ -z "${SOC}" ]; then
     echo -e "\033[0;31m[ERROR]\033[0m not specified SOC environment variable."
-    echo "Usage: SOC=<an7581|an7583|an7552|en7523> [OPTEE=yes|no] [PARALLEL_NAND=yes|no] $0 [bl1|bl2|bl31|all]"
+    echo "Usage: SOC=<an7581|an7583|an7552|en7523> [OPTEE=yes|no] $0 [bl1|bl2|bl31|all]"
     echo "Example: SOC=an7583 $0 all"
     echo "More info: $0 --help"
     exit 1
@@ -113,12 +118,24 @@ SOC_UPPER="${SOC^^}"
 #------------------------------------------------------------------------------
 OPTEE="${OPTEE:-no}"    # OPTEE=yes -> build BL2/BL31 with OP-TEE (BL32) support
 
-# PARALLEL_NAND=yes pulls the parallel (raw) NAND backend
-# (plat/ecnt/common/drivers/flash/parallel_nand_flash.c and its device table)
-# into BL23 instead of the SPI-NAND one.  The -D is applied to the BL2 build
-# only (see build_bl2) because the flash drivers are BL2 sources; the make
-# variable makes flash.mk pick up the extra sources.
-PARALLEL_NAND="${PARALLEL_NAND:-no}"
+# Parallel (raw) NAND backend.  The NFI controller auto-detects at runtime
+# whether the boot source is SPI-NAND or parallel (raw) NAND through nfi_type(),
+# so the parallel backend can always be compiled into BL2 without affecting the
+# SPI-NAND path (it is only selected when nfi_type() reports SPI_NFI_PARALLEL).
+# It is therefore enabled by default for the SoCs that expose the parallel NAND
+# interface (an7581 / an7583); there is no user switch for it any more.  The
+# make variable makes flash.mk pick up the extra sources, and the compiler
+# define (applied to the BL2 stages only, since the flash drivers are BL2
+# sources) keeps struct SPI_NAND_FLASH_INFO_T in sync with the host-side flash
+# table generator.
+PARALLEL_NAND_BL2_OPT=""    # extra make var for BL23 when parallel NAND is enabled
+PARALLEL_NAND_CFLAGS=""     # extra BSP_CFLAGS for the BL2 stages
+case "${SOC}" in
+    an7581|an7583)
+        PARALLEL_NAND_BL2_OPT="TCSUPPORT_PARALLEL_NAND=1"
+        PARALLEL_NAND_CFLAGS="-DTCSUPPORT_PARALLEL_NAND"
+        ;;
+esac
 
 BSP_CFLAGS="\
     -fsigned-char \
@@ -150,15 +167,6 @@ if [ "${OPTEE}" = "yes" ]; then
     OPTEE_BL31_OPT="TCSUPPORT_OPTEE=1 SPD=opteed"
 fi
 
-# The parallel NAND backend is only reachable through the BL2 flash drivers, so
-# both the make variable (flash.mk source selection) and the compiler define
-# (BL23 objects) are applied to the BL2 stages only.
-PARALLEL_NAND_BL2_OPT=""    # extra make var for BL23 when parallel NAND is enabled
-PARALLEL_NAND_CFLAGS=""     # extra BSP_CFLAGS for the BL2 stages
-if [ "${PARALLEL_NAND}" = "yes" ]; then
-    PARALLEL_NAND_BL2_OPT="TCSUPPORT_PARALLEL_NAND=1"
-    PARALLEL_NAND_CFLAGS="-DTCSUPPORT_PARALLEL_NAND"
-fi
 export BSP_CFLAGS
 
 #------------------------------------------------------------------------------
@@ -620,7 +628,6 @@ main() {
     echo "  (Full ATF 2.10 + atf-airoha ECNT platform code)"
     echo "  Output: ${OUTPUT_DIR}"
     echo "  OPTEE: ${OPTEE}"
-    echo "  Parallel NAND: ${PARALLEL_NAND}"
     echo "==========================================================================="
 
     check_environment
@@ -642,7 +649,6 @@ main() {
         *)
             echo "Usage: SOC=<an7581|an7583|an7552|en7523> [OPTEE=yes|no] $0 [bl1|bl2|bl31|all]"
             echo "  OPTEE=yes - build with OP-TEE (BL32) support"
-            echo "  PARALLEL_NAND=yes - build with parallel (raw) NAND backend"
             echo "  bl1  - Only build the open-source BL1 (en7523 only)"
             echo "  bl2  - Only build BL2 (including BL21/BL22/BL23 + packaging)"
             echo "  bl31 - Only build BL31"
