@@ -28,7 +28,8 @@ static hw_trap_t hw_trap;
 static int debug_flag = 0;
 
 extern int console_ecnt_register(uintptr_t baseaddr, console_t *console);
-extern int XModemReceive(console_t *console, unsigned int bufLen , unsigned char *bufBase);
+extern int ecnt_xmodem_recovery(console_t *console, uintptr_t loadaddr,
+				 size_t max_size);
 extern void	get_bootimage_by_npu_iNIC(unsigned int imgDstAddr);
 extern void disable_NPU_dbgMsg(void);
 
@@ -201,7 +202,9 @@ int bl1_plat_handle_pre_image_load(unsigned int image_id)
 			{
 				if (console.getc(&console) == 'x')
 				{
-					len = XModemReceive(&console, PLAT_ECNT_FIP_MAX_SIZE, (uint8_t *) PLAT_ECNT_FIP_BASE);
+					len = ecnt_xmodem_recovery(&console,
+						(uintptr_t)PLAT_ECNT_FIP_BASE,
+						PLAT_ECNT_FIP_MAX_SIZE);
 				}
 			}
 		}

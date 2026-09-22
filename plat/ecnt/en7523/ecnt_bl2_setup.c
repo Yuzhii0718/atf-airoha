@@ -15,6 +15,8 @@
 #include <drivers/generic_delay_timer.h>
 #include <drivers/console.h>
 #include <lib/mmio.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <tools_share/firmware_image_package.h>
 #include <common/desc_image_load.h>
 #include <common/image_decompress.h>
@@ -49,7 +51,8 @@ unsigned int bl31_base_addr = BL31_BASE;
 unsigned int rst_vector_base_addr = RVBADDRESS_CPU0;
 
 extern int console_ecnt_register(uintptr_t baseaddr, console_t *console);
-extern int XModemReceive(console_t *console, unsigned int bufLen , unsigned char *bufBase);
+extern int ecnt_xmodem_recovery(console_t *console, uintptr_t loadaddr,
+				 size_t max_size);
 extern void get_bootimage_by_npu_iNIC(unsigned int imgDstAddr);
 extern void disable_NPU_dbgMsg(void);
 extern void phy_config_efuse_load(void);
@@ -305,22 +308,8 @@ extern void plat_ecnt_io_switch_to_memmap(void);
 
 int fip_image_xmodem_load(void *loadaddr, int max_size)
 {
-	int len;
-
-	for (;;) {
-		printf("Press x to load BL31 + U-Boot FIP via XMODEM\n");
-		while (console.getc(&console) != 'x')
-			;
-
-		len = XModemReceive(&console, max_size, loadaddr);
-		if (len > 0 && plat_check_header(loadaddr) != 0) {
-			NOTICE("Received FIP: %d bytes\n", len);
-			return len;
-		}
-
-		ERROR("XMODEM FIP is incomplete or has an invalid TOC header (%d)\n",
-		      len);
-	}
+	return ecnt_xmodem_recovery(&console, (uintptr_t)loadaddr,
+				    (size_t)max_size);
 }
 
 static void fip_preload_xmodem_recover(const char *reason)
@@ -371,17 +360,9 @@ void bl2_plat_preload_setup(void)
 			if ((flash_read_status == FLASH_READ_STATUS_INCORRECT) ||
 			     (flash_read_status == FLASH_READ_STATUS_CORRECT && plat_check_bypass() != BYPASS_FWUPGRADE))
 			{
-				printf("Press x to load BL31 + U-Boot FIP\n");
-				while (len == 0)
-				{
-					if (console.getc(&console) == 'x')
-					{
-						// len = XModemReceive(&console, fwu_img_len,
-						// 		    (uint8_t *) (PLAT_ECNT_FIP_BASE - PLAT_ECNT_MV_DATA_SIZE));
-						len = XModemReceive(&console, PLAT_ECNT_FIP_MAX_SIZE,
-								    (uint8_t *) PLAT_ECNT_FIP_BASE);
-					}
-				}
+				len = ecnt_xmodem_recovery(&console,
+						       (uintptr_t)PLAT_ECNT_FIP_BASE,
+						       PLAT_ECNT_FIP_MAX_SIZE);
 
 // #if defined(TCSUPPORT_TPL_SUPPORT)
 // 				if (len >= 0x80000)

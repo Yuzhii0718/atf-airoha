@@ -148,6 +148,7 @@ ifeq ($(TCSUPPORT_BL2_OPTIMIZATION),)
 				${ECNT_PLAT}/common/ecnt_image_load.c				\
 				${ECNT_PLAT}/common/ecnt_bl2_mem_params_desc.c		\
 				${ECNT_PLAT}/common/drivers/xmodem/xmodem.c			\
+				${ECNT_PLAT_SOC}/ecnt_xmodem_recovery.c				\
 				${ECNT_PLAT}/common/drivers/efuse/$(EFUSE_DRIVER)	\
 				${LZMA_SOURCES}
 				
@@ -408,6 +409,7 @@ ifeq ($(IMAGE_BL23),1)
 				${ECNT_PLAT}/common/ecnt_image_load.c				\
 				${ECNT_PLAT}/common/ecnt_bl2_mem_params_desc.c		\
 				${ECNT_PLAT}/common/drivers/xmodem/xmodem.c			\
+				${ECNT_PLAT_SOC}/ecnt_xmodem_recovery.c				\
 				${LZMA_SOURCES}
 
 ifeq ($(TCSUPPORT_GPT_ATF_SUPPORT),1)

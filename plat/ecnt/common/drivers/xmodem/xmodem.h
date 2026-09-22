@@ -1,57 +1,61 @@
-/*! \file xmodem.h \brief XModem Transmit/Receive Implementation with CRC and 1K support. */
-//*****************************************************************************
-//
-// File Name	: 'xmodem.h'
-// Title		: XModem Transmit/Receive Implementation with CRC and 1K support
-// Author		: Pascal Stang - Copyright (C) 2006
-// Created		: 4/22/2006
-// Revised		: 7/22/2006
-// Version		: 0.1
-// Target MCU	: AVR processors
-// Editor Tabs	: 4
-//
-///	\ingroup general
-/// \defgroup xmodem XModem Transmit/Receive Implementation with CRC and 1K support (xmodem.c)
-/// \code #include "xmodem.h" \endcode
-/// \par Overview
-///		This XModem implementation supports both 128b and 1K packets with or
-///		without CRC checking.  The xmodem library must be initialized to use
-///		a particular I/O stream by passing appropriate getbyte() and sendbyte()
-///		functions to xmodemInit().  The xmodem transfer routines also expect
-///		function pointers to read and write data blocks on the local system.
-///		While this use of function pointers increases code size, it has great
-///		adaptability.  The generalized read/write data functions mean that it
-///		is easy to pipe data to/from any storage device like EEPROMs or flash
-///		cards, rather than being limited to just processor RAM.
-//
-// This code is distributed under the GNU Public License
-//		which can be found at http://www.gnu.org/licenses/gpl.txt
-//
-//*****************************************************************************
-//@{
+/* SPDX-License-Identifier: BSD-3-Clause */
+/*
+ * Copyright (c) 2026, Yuzhii0718 <admin@yuzhii0718.eu.org>. All rights reserved.
+ *
+ * XMODEM receive-only protocol driver with CRC-16 and 1K (STX) support.
+ * The state machine follows the classic XMODEM implementation written by
+ * Pascal Stang (Copyright (C) 2006), reworked for TF-A.
+ *
+ * Ported to the EcoNet/Airoha EN7523 / AN758x platforms.
+ */
 
-#ifndef XMODEM_H
-#define XMODEM_H
+#ifndef ECNT_XMODEM_H
+#define ECNT_XMODEM_H
 
-// xmodem control characters
-#define SOH			0x01
-#define STX			0x02
-#define EOT			0x04
-#define ACK			0x06
-#define NAK			0x15
-#define CAN			0x18
-#define CTRLZ		0x1A
+#include <stddef.h>
+#include <stdint.h>
 
-// xmodem timeout/retry parameters
-#define XMODEM_TIMEOUT_DELAY	100
-#define XMODEM_RETRY_LIMIT		32
+/* XMODEM control characters */
+#define XMODEM_SOH			0x01
+#define XMODEM_STX			0x02
+#define XMODEM_EOT			0x04
+#define XMODEM_ACK			0x06
+#define XMODEM_NAK			0x15
+#define XMODEM_CAN			0x18
+#define XMODEM_CTRLZ			0x1a
+#define XMODEM_CRC_REQ			'C'
 
-// error return codes
-#define XMODEM_ERROR_REMOTECANCEL	-1
-#define XMODEM_ERROR_OUTOFSYNC		-2
-#define XMODEM_ERROR_RETRYEXCEED	-3
-#define XMODEM_ERROR_OUTOFMEMORY	-4
+/*
+ * Error codes returned by xmodem_receive(). Note that they are all negative,
+ * so a simple "if (ret)" check is enough to detect a failure.
+ */
+#define XMODEM_ERR_REMOTE_CANCEL	(-1)
+#define XMODEM_ERR_OUT_OF_SYNC		(-2)
+#define XMODEM_ERR_RETRY_EXCEEDED	(-3)
+#define XMODEM_ERR_OUT_OF_MEMORY	(-4)
 
-#endif
+/*
+ * Stream I/O hooks provided by the caller.
+ *
+ * getc() must be non-blocking: it returns the next received character, or a
+ * negative value when the receive FIFO is empty.
+ */
+struct xmodem_io {
+	int (*getc)(void);
+	void (*putc)(int ch);
+};
 
-//@}
+/*
+ * Receive a file through XMODEM and store it at @dest.
+ *
+ * @io		Stream I/O hooks.
+ * @dest	Destination address.
+ * @max_size	Maximum number of bytes that may be written to @dest.
+ * @received	On success, receives the number of bytes written to @dest.
+ *
+ * Returns 0 on success, or one of the XMODEM_ERR_* codes on failure.
+ */
+int xmodem_receive(const struct xmodem_io *io, uintptr_t dest,
+		   size_t max_size, size_t *received);
+
+#endif /* ECNT_XMODEM_H */
