@@ -27,6 +27,14 @@ const mmap_region_t plat_mmap[] = {
 /*******************************************************************************
  * Macro generating the code for the function setting up the pagetables as per
  * the platform memory map & initialize the mmu, for the given exception level
+ *
+ * In the BL1/BL2 case, 'total_base/total_size' is the on-chip SRAM that holds
+ * BL2's own read-write data (rw data, bss and stack).  It is mapped as Normal
+ * Non-cacheable instead of Device: the accesses stay uncached (so nothing has
+ * to be cleaned before the next stage, and no cache line is ever allocated),
+ * but they are no longer strongly ordered, which lets the core gather,
+ * speculate and merge them.  Device mappings made a stack push or a small
+ * memcpy cost a full bus round trip.
  ******************************************************************************/
 #if defined(IMAGE_BL1) || defined(IMAGE_BL2)
 #define DEFINE_CONFIGURE_MMU_EL(_el)						\
@@ -39,7 +47,7 @@ const mmap_region_t plat_mmap[] = {
 	{														\
 		mmap_add_region(total_base, total_base,				\
 				total_size,									\
-				MT_DEVICE | MT_RW | MT_SECURE);				\
+				MT_NON_CACHEABLE | MT_RW | MT_SECURE);		\
 		mmap_add_region(ro_start, ro_start,					\
 				ro_limit - ro_start,						\
 				MT_MEMORY | MT_RO | MT_SECURE);				\

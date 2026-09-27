@@ -187,7 +187,13 @@ void bl2_el3_plat_arch_setup_optimize(void)
 	tests_on_l2c_sram();
 #endif
 
-	mmap_add_region(EN7523_MEM_BASE, EN7523_MEM_BASE, dram_size, MT_DEVICE | MT_RW | MT_SECURE);
+	/* BL2 handles its boot images through buffers that live in this DRAM
+	 * (0x80500000 and up).  As Device memory every access of them was a
+	 * separate strongly ordered bus transfer, which is what dominated the
+	 * UBI scan: a plain memcpy() moved ~4.4 MB/s.  Normal Non-cacheable
+	 * keeps coherency trivial (nothing is cached, so no clean/invalidate is
+	 * needed around the NFI DMA) while restoring gathering and merging. */
+	mmap_add_region(EN7523_MEM_BASE, EN7523_MEM_BASE, dram_size, MT_NON_CACHEABLE | MT_RW | MT_SECURE);
 	plat_configure_mmu_svc_mon(bl2_el3_tzram_layout.total_base,
 				   bl2_el3_tzram_layout.total_size,
 				   BL_CODE_BASE,
@@ -218,7 +224,7 @@ void bl2_el3_plat_arch_setup(void)
     tests_on_l2c_sram();
 #endif
 
-	mmap_add_region(EN7523_MEM_BASE, EN7523_MEM_BASE, dram_size, MT_DEVICE | MT_RW | MT_SECURE);
+	mmap_add_region(EN7523_MEM_BASE, EN7523_MEM_BASE, dram_size, MT_NON_CACHEABLE | MT_RW | MT_SECURE);
     	plat_configure_mmu_svc_mon(bl2_el3_tzram_layout.total_base,
                 		   bl2_el3_tzram_layout.total_size,
                 		   BL_CODE_BASE,
