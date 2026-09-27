@@ -116,6 +116,12 @@ static const io_ubi_spec_t ubi_dev_fip_spec = {
  * here so the boot time spent scanning UBI can be measured. The result is
  * cached (init_done) to avoid scanning twice.
  */
+/* Parallel NAND read path latency report (PNAND_LAT_DBG=1 builds). */
+#if defined(PNAND_LAT_DBG)
+extern void pnand_lat_reset(void);
+extern void pnand_lat_dump(const char *tag);
+#endif
+
 static void ubi_scan_fip_timed(void)
 {
 	uint64_t freq = read_cntfrq_el0();
@@ -124,12 +130,18 @@ static void ubi_scan_fip_timed(void)
 	if (freq == 0)
 		freq = 1;
 
+#if defined(PNAND_LAT_DBG)
+	pnand_lat_reset();
+#endif
 	start = read_cntpct_el0();
 	ubispl_init_scan(&nand_ubi_dev_spec, nand_ubi_dev_spec.fastmap);
 	delta = read_cntpct_el0() - start;
 
 	NOTICE("UBI scan for fip took %" PRIu64 " us\n",
 	       (delta * 1000000ULL) / freq);
+#if defined(PNAND_LAT_DBG)
+	pnand_lat_dump("ubi scan");
+#endif
 
 	nand_ubi_dev_spec.init_done = 1;
 }

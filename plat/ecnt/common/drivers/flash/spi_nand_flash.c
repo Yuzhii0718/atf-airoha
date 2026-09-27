@@ -417,13 +417,13 @@ struct spi_nand_flash_ooblayout ooblayout_feature7 = {
 	#define _SPI_NAND_DEBUG_PRINTF_ARRAY		spi_nand_flash_debug_printf_array
 #endif
 #if defined(TCSUPPORT_PARALLEL_NAND)
-extern SPI_NAND_FLASH_RTN_T parallel_nand_dma_read(u32 read_addr, u32 page_number, unsigned long *p_data);
-extern SPI_NAND_FLASH_RTN_T parallel_nand_dma_write(u32 write_addr, u32 page_number, unsigned long *p_data, u32 oob_len, u8 *ptr_oob);
-extern SPI_NAND_FLASH_RTN_T parallel_nand_erase(u32 page_number);
-extern SPI_NAND_FLASH_RTN_T parallel_nand_probe(struct SPI_NAND_FLASH_INFO_T *ptr_rtn_device_t);
+/* Brings in the parallel NAND backend prototypes and, with it, the read path
+ * latency instrumentation switch and slot list (PNAND_LAT_DBG). */
+#include "parallel_nand_flash.h"
+#if defined(PNAND_LAT_DBG)
+#include <arch_helpers.h>
+#endif
 extern SPI_CONTROLLER_RTN_T spi_nand_enable_manual_mode(void);
-extern SPI_NAND_FLASH_RTN_T parallel_nand_protocol_get_status(u8 *p_status);
-extern SPI_NAND_FLASH_RTN_T parallel_nand_protocol_reset (void);
 
 #define PARALLEL_NAND_READY (0x60)
 #define _SPI_NAND_ENABLE_MANUAL_MODE		spi_nand_enable_manual_mode
@@ -505,7 +505,35 @@ u32 maximum_bmt_block_count=0;
 SPI_NAND_FLASH_DEBUG_LEVEL_T  _SPI_NAND_DEBUG_LEVEL = SPI_NAND_FLASH_DEBUG_LEVEL_0;
 #endif
 
+#define READ_CACHE_PREFIX_SIZE				(64)
+
 u32	_current_page_num	= UNKNOW_PAGE;
+/* First READ_CACHE_PREFIX_SIZE bytes of the last page read into DRAM.  The
+ * UBI scan reads a page's header and may come back for that same prefix
+ * right after it has moved on to the VID page, so keeping a copy of it
+ * avoids a second flash access.  It is only refreshed from a page that was
+ * actually read into _current_cache_page_data. */
+static u32 _previous_cache_page_num = UNKNOW_PAGE;
+static u8 _previous_cache_page_prefix[READ_CACHE_PREFIX_SIZE];
+/* Result of the page currently held in _current_cache_page_data.  Re-asking
+ * for a cached page must report the same ECC verdict instead of silently
+ * succeeding, and must not touch the flash again. */
+static SPI_NAND_FLASH_RTN_T _current_page_status = SPI_NAND_FLASH_RTN_NO_ERROR;
+#if defined(TCSUPPORT_PARALLEL_NAND)
+/* Set once a first-sector read fails: parallel NAND then falls back to the
+ * page-wide path for the rest of this boot. */
+static u8 _parallel_sector_read_disabled;
+/* Bytes of spare area kept for the first sector of _parallel_sector_page.
+ * The NFI ECC covers data + FDM, so this is the corrected copy of the bad
+ * block marker. */
+#define PARALLEL_SECTOR_OOB_SIZE	(16)
+/* Page whose first sector currently sits in dma_read_page, with its spare
+ * bytes snapshotted from the NFI FDM registers.  A page's bad block marker
+ * and its EC header both live in sector 0 and the UBI scan asks for them in
+ * either order, so one array read can answer both. */
+static u32 _parallel_sector_page = UNKNOW_PAGE;
+static u8 _parallel_sector_oob[PARALLEL_SECTOR_OOB_SIZE];
+#endif
 NAND_FLASH_OTP_ENABLE_T otp_status = NAND_FLASH_OTP_DISABLE;
 u32 reservearea_size = 0;
 unsigned char _ondie_ecc_flag=1;    /* Ondie ECC : [ToDo :  Init this flag base on diffrent chip ?] */
@@ -630,6 +658,8 @@ void spi_nand_protocol_set_otp(NAND_FLASH_OTP_ENABLE_T state)
 {
 	/* reset for forcing read page */
 	_current_page_num = UNKNOW_PAGE;
+	_previous_cache_page_num = UNKNOW_PAGE;
+	_current_page_status = SPI_NAND_FLASH_RTN_NO_ERROR;
 	/* set OTP status */
 	otp_status = state;
 }
@@ -1155,6 +1185,11 @@ static SPI_NAND_FLASH_RTN_T spi_nand_block_aligned_check( u32 addr,
 void SPI_NAND_Flash_Clear_Read_Cache_Data( void )
 {
 	_current_page_num	= UNKNOW_PAGE;
+	_previous_cache_page_num = UNKNOW_PAGE;
+	_current_page_status = SPI_NAND_FLASH_RTN_NO_ERROR;
+#if defined(TCSUPPORT_PARALLEL_NAND)
+	_parallel_sector_page = UNKNOW_PAGE;
+#endif
 }
 
 void SPI_NAND_Flash_Set_DmaMode( SPI_DMA_MODE_T input )
@@ -1717,6 +1752,9 @@ static SPI_NAND_FLASH_RTN_T spi_nand_read_page (u32 page_number, SPI_NAND_FLASH_
 	SPI_ECC_DECODE_STATUS_T decode_status_t;
 	SPI_CONTROLLER_CONF_T	spi_conf_t;
 	u32 					offset1, offset2, offset3, dma_sec_size;
+	/* Set when the NFI was pointed straight at _current_cache_page_data, so
+	 * the data area does not need a second (uncached) DRAM to DRAM copy. */
+	u8						dma_to_page_cache = 0;
 	/* Disable print on BL2 for decreasing bl2.bin size. Should set it be unused to avoid unused-but-set-variable warning */
 	u32 					ecc_decode_done_bit __attribute__((unused));
 
@@ -1725,8 +1763,26 @@ static SPI_NAND_FLASH_RTN_T spi_nand_read_page (u32 page_number, SPI_NAND_FLASH_
 
 #if defined(TCSUPPORT_NAND_BMT) && !defined(IMAGE_BL2) && ((!defined(LZMA_IMG) && !defined(BOOTROM_EXT)) || defined(TCSUPPORT_BB_256KB))
 			u8	data[_SPI_NAND_PAGE_SIZE], oob_mapping[_SPI_NAND_OOB_SIZE];
-#endif	
+#endif
+#if defined(PNAND_LAT_DBG)
+	u64 lat_t0 = 0, lat_t1 = 0, lat_t2 = 0, lat_t2b = 0;
+
+	if (_parallel_nand_mode) {
+		lat_t0 = read_cntpct_el0();
+	}
+#endif
 	if(_current_page_num != page_number) {
+		/* Keep the header of the page that is about to be replaced.  The
+		 * UBI scan read its VID header and may ask for the first bytes of
+		 * the previous page again. */
+		if (_current_page_num != UNKNOW_PAGE &&
+		    _current_page_status == SPI_NAND_FLASH_RTN_NO_ERROR) {
+			memcpy(_previous_cache_page_prefix,
+			       &_current_cache_page_data[0],
+			       READ_CACHE_PREFIX_SIZE);
+			_previous_cache_page_num = _current_page_num;
+		}
+
 		ptr_dev_info_t	= _SPI_NAND_GET_DEVICE_INFO_PTR;
 
 		/* read from read_addr index in the page */
@@ -1845,15 +1901,44 @@ static SPI_NAND_FLASH_RTN_T spi_nand_read_page (u32 page_number, SPI_NAND_FLASH_
 #endif
 #else
 			/* bootloader part */
-			flush_dcache_range((unsigned long)dma_read_page, (unsigned long)(dma_read_page + _SPI_NAND_CACHE_SIZE));
-			rdma_addr = K1_TO_PHY(&dma_read_page[0]);
+#if defined(TCSUPPORT_PARALLEL_NAND)
+			/* Raw NAND has no on-die cache: the NFI is the only thing
+			 * that can correct the page, and it writes the corrected
+			 * data straight into DRAM.  Let it write into the page
+			 * cache the callers read from, so the page does not have
+			 * to be copied a second time through uncached DRAM.
+			 * Only the auto FDM layout puts the data area at offset 0
+			 * (the oob part goes to the NFI FDM registers). */
+			if (_parallel_nand_mode &&
+			    (spi_nfi_conf_t.auto_fdm_t == SPI_NFI_CON_AUTO_FDM_Enable)) {
+				dma_to_page_cache = 1;
+				flush_dcache_range((unsigned long)_current_cache_page_data,
+						   (unsigned long)(_current_cache_page_data + _SPI_NAND_CACHE_SIZE));
+				rdma_addr = K1_TO_PHY(&_current_cache_page_data[0]);
+			} else
+#endif
+			{
+#if defined(TCSUPPORT_PARALLEL_NAND)
+				/* dma_read_page is reused, the first sector cache
+				 * no longer describes what it holds. */
+				_parallel_sector_page = UNKNOW_PAGE;
+#endif
+				flush_dcache_range((unsigned long)dma_read_page, (unsigned long)(dma_read_page + _SPI_NAND_CACHE_SIZE));
+				rdma_addr = K1_TO_PHY(&dma_read_page[0]);
+			}
 #endif
 			mb();
 
 #if defined(TCSUPPORT_PARALLEL_NAND)
 			if (_parallel_nand_mode)
 			{
+#if defined(PNAND_LAT_DBG)
+				lat_t1 = read_cntpct_el0();
+#endif
 				rtn_status = parallel_nand_dma_read(read_addr, page_number, (unsigned long *)rdma_addr);
+#if defined(PNAND_LAT_DBG)
+				lat_t2 = read_cntpct_el0();
+#endif
 			}
 			else
 #endif
@@ -1907,6 +1992,10 @@ static SPI_NAND_FLASH_RTN_T spi_nand_read_page (u32 page_number, SPI_NAND_FLASH_
 			spi_nand_protocol_read_from_cache(read_addr, ((ptr_dev_info_t->page_size)+(ptr_dev_info_t->oob_size)), &_current_cache_page[0], speed_mode, ptr_dev_info_t->dummy_mode );
 		}
 
+#if defined(PNAND_LAT_DBG)
+		lat_t2b = read_cntpct_el0();
+#endif
+
 		/* Divide read page into data segment and oob segment  */
 		if((_spi_dma_mode == SPI_DMA_MODE_DISABLE) || 
 		  ((_spi_dma_mode == SPI_DMA_MODE_ENABLE) && (!isSpiNandAndCtrlECC) && (spi_nfi_conf_t.auto_fdm_t == SPI_NFI_CON_AUTO_FDM_Disable) && (spi_nfi_conf_t.hw_ecc_t == SPI_NFI_CON_HW_ECC_Disable)))
@@ -1957,7 +2046,11 @@ static SPI_NAND_FLASH_RTN_T spi_nand_read_page (u32 page_number, SPI_NAND_FLASH_
 			}
 			else /* Auto FDM enable : Data and oob alternate ,  Data inside DRAM , oob inside NFI register */  
 			{
-				memcpy( &_current_cache_page_data[0], &dma_read_page[0], (ptr_dev_info_t->page_size) );
+				/* Nothing to move when the NFI already wrote the page
+				 * into _current_cache_page_data (parallel NAND). */
+				if (!dma_to_page_cache) {
+					memcpy( &_current_cache_page_data[0], &dma_read_page[0], (ptr_dev_info_t->page_size) );
+				}
 				SPI_NFI_Read_SPI_NAND_FDM(&_current_cache_page_oob[0], (ptr_dev_info_t->oob_size));
 				memcpy( &_current_cache_page_oob_mapping[0], &_current_cache_page_oob[0], ptr_dev_info_t->oob_size);
 			}
@@ -2018,11 +2111,153 @@ static SPI_NAND_FLASH_RTN_T spi_nand_read_page (u32 page_number, SPI_NAND_FLASH_
 #endif
 		{
 			_current_page_num = page_number;
+			_current_page_status = rtn_status;
 		}
-	}	
+	} else {
+		/* Report the ECC verdict of the cached page instead of a blind
+		 * success: the UBI scan re-reads pages it has already loaded. */
+		rtn_status = _current_page_status;
+	}
+
+#if defined(PNAND_LAT_DBG)
+	if (_parallel_nand_mode && (lat_t1 != 0U)) {
+		u64 lat_end = read_cntpct_el0();
+
+		pnand_lat_add(PNAND_LAT_SLOT_PAGE_PRE,
+			      pnand_lat_ticks_to_us(lat_t1 - lat_t0));
+		pnand_lat_add(PNAND_LAT_SLOT_PAGE_POST,
+			      pnand_lat_ticks_to_us(lat_end - lat_t2));
+		pnand_lat_add(PNAND_LAT_SLOT_PAGE_ECC,
+			      pnand_lat_ticks_to_us(lat_t2b - lat_t2));
+		pnand_lat_add(PNAND_LAT_SLOT_PAGE_COPY,
+			      pnand_lat_ticks_to_us(lat_end - lat_t2b));
+	}
+#endif
 
 	return rtn_status;
 }
+
+#if defined(TCSUPPORT_PARALLEL_NAND)
+/*------------------------------------------------------------------------------------
+ * FUNCTION: static SPI_NAND_FLASH_RTN_T parallel_nand_read_first_sector( u32 page_number )
+ * PURPOSE : Load only the first 512 byte + spare codeword of a page.
+ *
+ *           Raw NAND has no on-die ECC: the NFI has to correct the data while
+ *           it is transferred, so a byte-granular read is not an option.  The
+ *           smallest transfer that keeps the medium's ECC protection intact is
+ *           a single sector, and that is all the UBI glue needs: the EC and
+ *           VID headers live in the first READ_CACHE_PREFIX_SIZE bytes of
+ *           their page.
+ *
+ * PARAMs  :
+ *   INPUT : page_number - page to load into dma_read_page
+ *   OUTPUT: None
+ * RETURN  : SPI_NAND_FLASH_RTN_NO_ERROR - Successful.
+ *           SPI_NAND_FLASH_RTN_ECC_DECODE_FAIL / DETECTED_BAD_BLOCK - Failed.
+ * NOTES   :
+ *   The NFI and ECC decode block are reprogrammed for one sector and restored
+ *   to the page-wide geometry afterwards, so the caller sees no side effect.
+ *------------------------------------------------------------------------------------
+ */
+static SPI_NAND_FLASH_RTN_T parallel_nand_read_first_sector(u32 page_number)
+{
+	SPI_NFI_CONF_T				saved_nfi;
+	SPI_NFI_CONF_T				sector_nfi;
+	SPI_ECC_DECODE_CONF_T		saved_ecc;
+	SPI_ECC_DECODE_CONF_T		sector_ecc;
+	SPI_ECC_DECODE_STATUS_T		decode_status;
+	SPI_NAND_FLASH_RTN_T		ret;
+	u32							check_cnt;
+	u32							ecc_decode_done_bit __attribute__((unused));
+#if defined(PNAND_LAT_DBG)
+	u64							lat_t0, lat_t1, lat_t2, lat_t3, lat_t4;
+
+	lat_t0 = read_cntpct_el0();
+#endif
+
+	/* Whatever dma_read_page holds is about to be replaced. */
+	_parallel_sector_page = UNKNOW_PAGE;
+
+	SPI_NFI_Get_Configure(&saved_nfi);
+	SPI_ECC_Decode_Get_Configure(&saved_ecc);
+
+	sector_nfi = saved_nfi;
+	sector_ecc = saved_ecc;
+	sector_nfi.sec_num = 1;
+	sector_ecc.decode_block_size = ((sector_nfi.fdm_ecc_num + 512) * 8) +
+				       (sector_ecc.decode_ecc_abiliry * 13);
+
+	SPI_NFI_Reset();
+	SPI_NFI_Set_Configure(&sector_nfi);
+	SPI_ECC_Decode_Set_Configure(&sector_ecc);
+	SPI_ECC_Decode_Disable();
+	SPI_ECC_Encode_Disable();
+	SPI_ECC_Decode_Enable();
+
+	flush_dcache_range((unsigned long)dma_read_page,
+			   (unsigned long)(dma_read_page + _SPI_NAND_CACHE_SIZE));
+	rdma_addr = K1_TO_PHY(&dma_read_page[0]);
+	mb();
+
+#if defined(PNAND_LAT_DBG)
+	lat_t1 = read_cntpct_el0();
+#endif
+	ret = parallel_nand_dma_read(0, page_number, (unsigned long *)rdma_addr);
+#if defined(PNAND_LAT_DBG)
+	lat_t2 = read_cntpct_el0();
+#endif
+	if (ret != SPI_NAND_FLASH_RTN_NO_ERROR) {
+		goto restore;
+	}
+
+	for (check_cnt = 0; check_cnt < _SPI_NFI_CHECK_ECC_DONE_MAX_TIMES; check_cnt++) {
+		ecc_decode_done_bit = SPI_ECC_Decode_Check_Done(&decode_status, 1);
+		if (decode_status == SPI_ECC_DECODE_STATUS_DONE) {
+			break;
+		}
+	}
+	if (check_cnt == _SPI_NFI_CHECK_ECC_DONE_MAX_TIMES) {
+		ret = SPI_NAND_FLASH_RTN_ECC_DECODE_FAIL;
+		goto restore;
+	}
+
+	if (SPI_ECC_DECODE_Check_Correction_Status() == SPI_ECC_RTN_CORRECTION_ERROR) {
+		ret = SPI_NAND_FLASH_RTN_DETECTED_BAD_BLOCK;
+	}
+
+	if (ret == SPI_NAND_FLASH_RTN_NO_ERROR) {
+		/* Sector 0 now sits in dma_read_page and its spare bytes are in
+		 * the NFI FDM registers.  Keep both: the bad block marker of
+		 * this page can then be answered without a second array read.
+		 * Must be read before the NFI is reprogrammed below. */
+		SPI_NFI_Read_SPI_NAND_FDM(&_parallel_sector_oob[0],
+					  PARALLEL_SECTOR_OOB_SIZE);
+		_parallel_sector_page = page_number;
+	}
+
+restore:
+#if defined(PNAND_LAT_DBG)
+	lat_t3 = read_cntpct_el0();
+#endif
+	/* Restore the page-wide geometry used to load the FIP payload. */
+	SPI_ECC_Decode_Disable();
+	SPI_NFI_Reset();
+	SPI_NFI_Set_Configure(&saved_nfi);
+	SPI_ECC_Decode_Set_Configure(&saved_ecc);
+
+#if defined(PNAND_LAT_DBG)
+	lat_t4 = read_cntpct_el0();
+	pnand_lat_add(PNAND_LAT_SLOT_SECT_CFG,
+		      pnand_lat_ticks_to_us(lat_t1 - lat_t0));
+	pnand_lat_add(PNAND_LAT_SLOT_SECT_ECC,
+		      pnand_lat_ticks_to_us(lat_t3 - lat_t2));
+	pnand_lat_add(PNAND_LAT_SLOT_SECT_RESTORE,
+		      pnand_lat_ticks_to_us(lat_t4 - lat_t3));
+#endif
+
+	return ret;
+}
+#endif /* TCSUPPORT_PARALLEL_NAND */
 
 #if !defined(LZMA_IMG) && !defined(BOOTROM_EXT)
 static SPI_NAND_FLASH_RTN_T spi_nand_boundary_check(
@@ -2187,6 +2422,16 @@ static SPI_NAND_FLASH_RTN_T spi_nand_read_internal(
 #else
 		_SPI_NAND_DEBUG_PRINTF(SPI_NAND_FLASH_DEBUG_LEVEL_1, "spi_nand_read_internal: read_addr=0x%x, page_number=0x%x, data_offset=0x%x\n", physical_read_addr, page_number, data_offset);
 #endif
+
+		if (_previous_cache_page_num == page_number &&
+		    data_offset + remain_len <= READ_CACHE_PREFIX_SIZE) {
+			/* The header of the page read just before this one is still
+			 * in DRAM, no need to touch the flash again. */
+			memcpy(&ptr_rtn_buf[len - remain_len],
+			       &_previous_cache_page_prefix[data_offset], remain_len);
+			_SPI_NAND_SEMAPHORE_UNLOCK();
+			return rtn_status;
+		}
 
 		if(len == 1 && _current_page_num == page_number) {
 			ptr_rtn_buf[0] = _current_cache_page_data[data_offset];
@@ -2464,6 +2709,8 @@ static int spi_nand_cache_read(u32 page, u32 offset, u32 len, u8 *buf)
 	ptr_dev_info_t = _SPI_NAND_GET_DEVICE_INFO_PTR;
 
 	_current_page_num = UNKNOW_PAGE;
+	_previous_cache_page_num = UNKNOW_PAGE;
+	_current_page_status = SPI_NAND_FLASH_RTN_NO_ERROR;
 
 	_SPI_NAND_ENABLE_MANUAL_MODE();
 
@@ -2485,6 +2732,56 @@ static int spi_nand_cache_read(u32 page, u32 offset, u32 len, u8 *buf)
 
 	return 0;
 }
+
+#if defined(TCSUPPORT_PARALLEL_NAND)
+/*------------------------------------------------------------------------------------
+ * FUNCTION: static SPI_NAND_FLASH_RTN_T parallel_nand_sector_read( u32 page )
+ * PURPOSE : First sector read with the failure policy of the fast path.
+ *
+ *           A page level ECC failure is how a factory bad block or a worn page
+ *           shows up, and it is expected: only the request that hit it has to
+ *           fall back to the page-wide path.  Treating it as fatal would drop
+ *           the fast path for the whole boot as soon as the scan walked over
+ *           the first bad block, which is exactly what the UBI scan does (it
+ *           asks for the bad block marker of every erase block).
+ *
+ *           Any other failure (NFI timeout, undecodable geometry) means the
+ *           sector mechanism itself is unusable here, and then the page-wide
+ *           path is selected for the rest of the boot.
+ *
+ * PARAMs  :
+ *   INPUT : page - page to load into dma_read_page
+ *   OUTPUT: None
+ * RETURN  : SPI_NAND_FLASH_RTN_NO_ERROR - sector 0 is in dma_read_page.
+ *           Otherwise the caller must fall back to nandflash_read().
+ *------------------------------------------------------------------------------------
+ */
+static SPI_NAND_FLASH_RTN_T parallel_nand_sector_read(u32 page)
+{
+	SPI_NAND_FLASH_RTN_T status;
+
+	if (_parallel_sector_read_disabled)
+		return SPI_NAND_FLASH_RTN_ECC_DECODE_FAIL;
+
+	status = parallel_nand_read_first_sector(page);
+	if (status == SPI_NAND_FLASH_RTN_NO_ERROR)
+		return status;
+
+#if defined(PNAND_LAT_DBG)
+	if (status == SPI_NAND_FLASH_RTN_DETECTED_BAD_BLOCK)
+		pnand_lat_add(PNAND_LAT_SLOT_SECT_BADPG, 0);
+#endif
+
+	if (status != SPI_NAND_FLASH_RTN_DETECTED_BAD_BLOCK) {
+		_parallel_sector_read_disabled = 1;
+#if defined(PNAND_LAT_DBG)
+		pnand_lat_add(PNAND_LAT_SLOT_SECT_OFF, 0);
+#endif
+	}
+
+	return status;
+}
+#endif /* TCSUPPORT_PARALLEL_NAND */
 
 /*------------------------------------------------------------------------------------
  * FUNCTION: int nandflash_read_range( unsigned long  from,
@@ -2509,12 +2806,22 @@ static int spi_nand_cache_read(u32 page, u32 offset, u32 len, u8 *buf)
  *   OUTPUT: buf  - destination buffer
  * RETURN  : 0 - Successful.   Otherwise -1.
  * NOTES   :
- *   -1 is also returned when the fast path would be slower or unsafe and the
+ *   Requests are served, in order of preference, from
+ *     - the page already held in DRAM (its ECC verdict is known),
+ *     - the saved header of the page read just before it,
+ *     - for parallel NAND, a single ECC protected sector,
+ *     - the SPI-NAND chip cache, byte granular.
+ *
+ *   -1 is returned when the fast path would be slower or unsafe and the
  *   caller must fall back to nandflash_read():
  *     - the SoC ECC engine corrects the data while it is streamed out of the
  *       chip cache, so a partial transfer would bypass the correction;
  *     - with the controller DMA active, a request covering at least one whole
- *       page is faster through the full page DMA path.
+ *       page is faster through the full page DMA path;
+ *     - parallel NAND reaches beyond the first sector of the page, or the page
+ *       hit a first sector ECC failure (only that page), or the sector path
+ *       failed for a reason that is not page specific, in which case it stays
+ *       off for the rest of the boot.
  *
  *------------------------------------------------------------------------------------
  */
@@ -2523,12 +2830,15 @@ int nandflash_read_range(unsigned long from, unsigned long len,
 {
 	struct SPI_NAND_FLASH_INFO_T *ptr_dev_info_t;
 	unsigned long addr, remain;
-	u32 page_size, chunk;
+	u32 page_size, page, offset, chunk;
+#if defined(TCSUPPORT_PARALLEL_NAND)
+	SPI_NAND_FLASH_RTN_T sector_status;
+#endif
 
 	if (!len)
 		return 0;
 
-	if (isSpiNandAndCtrlECC)
+	if (!buf)
 		return -1;
 
 	ptr_dev_info_t = _SPI_NAND_GET_DEVICE_INFO_PTR;
@@ -2538,13 +2848,48 @@ int nandflash_read_range(unsigned long from, unsigned long len,
 		return -1;
 
 	for (addr = from, remain = len; remain > 0; ) {
-		chunk = page_size - (addr % page_size);
+		page = addr / page_size;
+		offset = addr % page_size;
+		chunk = page_size - offset;
 		if (chunk > remain)
 			chunk = remain;
 
-		if (spi_nand_cache_read(addr / page_size, addr % page_size,
-					chunk, &buf[len - remain]))
-			return -1;
+		/* A completed page read already carries its ECC result. */
+		if (_current_page_num == page &&
+		    _current_page_status == SPI_NAND_FLASH_RTN_NO_ERROR) {
+			memcpy(&buf[len - remain],
+			       &_current_cache_page_data[offset], chunk);
+		} else if (_previous_cache_page_num == page &&
+			   offset + chunk <= READ_CACHE_PREFIX_SIZE) {
+			memcpy(&buf[len - remain],
+			       &_previous_cache_page_prefix[offset], chunk);
+#if defined(TCSUPPORT_PARALLEL_NAND)
+		} else if (_parallel_sector_page == page &&
+			   offset + chunk <= 512) {
+			/* Sector 0 of this page is still in dma_read_page (a bad
+			 * block marker query for the same page asked for it). */
+			memcpy(&buf[len - remain], &dma_read_page[offset], chunk);
+		} else if (_parallel_nand_mode &&
+			   offset + chunk <= 512) {
+			/* UBI headers fit in the first ECC sector, and raw NAND
+			 * must be corrected by the controller ECC while it is
+			 * transferred. dma_read_page keeps the data sectors in
+			 * order, so sector 0 is the head of the buffer. */
+			sector_status = parallel_nand_sector_read(page);
+			if (sector_status != SPI_NAND_FLASH_RTN_NO_ERROR)
+				return -1;
+			memcpy(&buf[len - remain], &dma_read_page[offset], chunk);
+#endif
+		} else {
+			/* SPI-NAND on-die ECC corrects the page before its cache
+			 * is read; the SoC ECC and parallel NAND cannot. */
+			if (isSpiNandAndCtrlECC || _parallel_nand_mode)
+				return -1;
+
+			if (spi_nand_cache_read(page, offset, chunk,
+						&buf[len - remain]))
+				return -1;
+		}
 
 		addr += chunk;
 		remain -= chunk;
@@ -2570,6 +2915,11 @@ int nandflash_read_range(unsigned long from, unsigned long len,
  * RETURN  : 0 - Successful.   Otherwise -1.
  * NOTES   :
  *   Same SoC ECC restriction as nandflash_read_range().
+ *   Parallel NAND answers from the first sector of the page: the NFI ECC
+ *   covers data plus FDM, so the marker is read from the corrected copy
+ *   rather than from a raw spare access.  The NFI loads and transfers the
+ *   whole page plus spare for the page-wide path, which is what the UBI
+ *   scan used to pay for every erase block just to look at one byte.
  *   The request is never silently truncated: if @len is larger than the
  *   spare area, -1 is returned instead of reading a partial buffer.
  *
@@ -2580,16 +2930,41 @@ int nandflash_read_oob(unsigned long from, unsigned long len,
 {
 	struct SPI_NAND_FLASH_INFO_T *ptr_dev_info_t;
 	u32 page_size, oob_size;
+#if defined(TCSUPPORT_PARALLEL_NAND)
+	u32 page;
+#endif
 
 	if (!len)
 		return 0;
 
-	if (isSpiNandAndCtrlECC)
+	if (!buf)
 		return -1;
 
 	ptr_dev_info_t = _SPI_NAND_GET_DEVICE_INFO_PTR;
 	page_size = ptr_dev_info_t->page_size;
 	oob_size = ptr_dev_info_t->oob_size;
+
+#if defined(TCSUPPORT_PARALLEL_NAND)
+	if (_parallel_nand_mode) {
+		/* Only the first sector is kept, and that is where the bad
+		 * block marker lives. */
+		if (len > PARALLEL_SECTOR_OOB_SIZE)
+			return -1;
+
+		page = from / page_size;
+		if (_parallel_sector_page != page) {
+			if (parallel_nand_sector_read(page) !=
+			    SPI_NAND_FLASH_RTN_NO_ERROR)
+				return -1;
+		}
+
+		memcpy(buf, &_parallel_sector_oob[0], len);
+		return 0;
+	}
+#endif
+
+	if (isSpiNandAndCtrlECC)
+		return -1;
 
 	if (len > oob_size)
 		return -1;
@@ -6799,6 +7174,8 @@ static int spi_nand_proc_test_write(struct file* file, const char* buffer,
 		dump_bbt_info(1, g_bbt);
  	} else if (!strcmp(cmd, "clrCache")) {
 		_current_page_num = UNKNOW_PAGE;
+		_previous_cache_page_num = UNKNOW_PAGE;
+		_current_page_status = SPI_NAND_FLASH_RTN_NO_ERROR;
 		_SPI_NAND_PRINTF("cache has beed cleared, _current_page_num:0x%x\n", _current_page_num);
 #ifdef ERASE_WRITE_CNT_LOG
 	} else if(!strcmp(cmd, "dbg_erase_write")) {

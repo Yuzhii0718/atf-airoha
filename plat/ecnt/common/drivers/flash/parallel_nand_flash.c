@@ -31,6 +31,9 @@
 #include <common/debug.h>
 #include <string.h>
 
+#if defined(PNAND_LAT_DBG)
+#include <arch_helpers.h>		/* read_cntpct_el0() */
+#endif
 #include <asm/tc3162.h>			/* isFPGA() */
 
 #include <ecnt_spi_nand_flash.h>
@@ -47,6 +50,76 @@
 #define PARALLEL_NAND_COL_NOB			(2)
 #define PARALLEL_NAND_ROW_NOB			(ptr_dev_info_t->addr_cycle - 2)
 #define PARALLEL_NAND_STATUS_FAIL_BIT	(0x01)
+
+/* Read path latency instrumentation, switch and slot list live in
+ * parallel_nand_flash.h (PNAND_LAT_DBG). */
+#if defined(PNAND_LAT_DBG)
+
+struct pnand_lat_slot {
+	const char	*name;
+	u32			cnt;
+	u32			sum;
+	u32			max;
+};
+
+static struct pnand_lat_slot _pnand_lat_slots[PNAND_LAT_SLOTS] = {
+	{ "proto_wait" }, { "proto_xfer" }, { "page_pre" }, { "page_post" },
+	{ "sect_cfg" }, { "sect_ecc" }, { "sect_restore" }, { "page_ecc" },
+	{ "page_copy" }, { "sect_badpg" }, { "sect_off" },
+};
+
+u32 pnand_lat_ticks_to_us(u64 ticks)
+{
+	u64 freq = read_cntfrq_el0();
+
+	if (freq == 0U) {
+		freq = 1U;
+	}
+
+	return (u32)((ticks * 1000000ULL) / freq);
+}
+
+void pnand_lat_add(u32 slot, u32 us)
+{
+	if (slot >= PNAND_LAT_SLOTS) {
+		return;
+	}
+
+	_pnand_lat_slots[slot].cnt++;
+	_pnand_lat_slots[slot].sum += us;
+	if (us > _pnand_lat_slots[slot].max) {
+		_pnand_lat_slots[slot].max = us;
+	}
+}
+
+void pnand_lat_reset(void)
+{
+	u32 i;
+
+	for (i = 0U; i < PNAND_LAT_SLOTS; i++) {
+		_pnand_lat_slots[i].cnt = 0U;
+		_pnand_lat_slots[i].sum = 0U;
+		_pnand_lat_slots[i].max = 0U;
+	}
+}
+
+void pnand_lat_dump(const char *tag)
+{
+	u32 i;
+
+	for (i = 0U; i < PNAND_LAT_SLOTS; i++) {
+		if (_pnand_lat_slots[i].cnt == 0U) {
+			continue;
+		}
+		/* TF-A's reduced printf exits on left-align/width specifiers, so
+		 * only plain %s/%u are used here. */
+		NOTICE("pnand lat [%s] %s n=%u avg=%u max=%u us\n", tag,
+		       _pnand_lat_slots[i].name, _pnand_lat_slots[i].cnt,
+		       _pnand_lat_slots[i].sum / _pnand_lat_slots[i].cnt,
+		       _pnand_lat_slots[i].max);
+	}
+}
+#endif /* PNAND_LAT_DBG */
 
 /* STATIC VARIABLE DECLARATIONS ------------------------------------------------------ */
 extern struct SPI_NAND_FLASH_INFO_T _current_flash_info_t;
@@ -233,17 +306,42 @@ static SPI_NAND_FLASH_RTN_T parallel_nand_send_cmd(u8 cmd)
 static SPI_NAND_FLASH_RTN_T parallel_nand_protocol_read(u32 col_addr, u32 row_addr, unsigned long *p_data)
 {
 	SPI_NAND_FLASH_RTN_T	rtn_status = SPI_NAND_FLASH_RTN_NO_ERROR;
+#if defined(PNAND_LAT_DBG)
+	u64						t1, t2;
+	u32						wait_us, xfer_us;
+
+	t1 = read_cntpct_el0();
+	t2 = t1;
+#endif
 
 	rtn_status = parallel_nand_send_cmd(NAND_CMD_READ);
 	if (rtn_status == SPI_NAND_FLASH_RTN_NO_ERROR) {
 		rtn_status = parallel_nand_send_address(col_addr, row_addr, PARALLEL_NAND_COL_NOB, PARALLEL_NAND_ROW_NOB);
 		if (rtn_status == SPI_NAND_FLASH_RTN_NO_ERROR) {
+#if defined(PNAND_LAT_DBG)
+			t1 = read_cntpct_el0();
+#endif
 			rtn_status = parallel_nand_send_cmd(NAND_CMD_READSTART);
+#if defined(PNAND_LAT_DBG)
+			t2 = read_cntpct_el0();
+#endif
 			if (rtn_status == SPI_NAND_FLASH_RTN_NO_ERROR) {
 				rtn_status = parallel_nand_transfer_data(p_data, SPI_NFI_READ_DATA);
 			}
 		}
 	}
+
+#if defined(PNAND_LAT_DBG)
+	{
+		u64 t3 = read_cntpct_el0();
+
+		wait_us = pnand_lat_ticks_to_us(t2 - t1);
+		xfer_us = pnand_lat_ticks_to_us(t3 - t2);
+
+		pnand_lat_add(PNAND_LAT_SLOT_PROTO_WAIT, wait_us);
+		pnand_lat_add(PNAND_LAT_SLOT_PROTO_XFER, xfer_us);
+	}
+#endif
 
 	VERBOSE("parallel_nand: protocol_read, col_addr=0x%x row_addr=0x%x\n", col_addr, row_addr);
 

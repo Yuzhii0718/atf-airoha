@@ -39,6 +39,13 @@ endif
 # table generator (see build.sh), hence it is tracked separately.
 FLASH_REBUILD_SRCS	+=	plat/ecnt/common/drivers/flash/spi_nand_flash_table.c
 
+# Build with PNAND_LAT_DBG=1, e.g.: PNAND_LAT_DBG=1 SOC=an7581 ./build.sh bl2
+# Off by default: the read path latency instrumentation (timestamp reads,
+# counters and the report printed after the UBI scan) is then not compiled in.
+ifeq ($(PNAND_LAT_DBG),1)
+$(eval $(call add_define,PNAND_LAT_DBG))
+endif
+
 #eMMC
 ifneq ($(TCSUPPORT_EMMC),)
 FLASH_SRCS	+=	$(addprefix drivers/mmc/,	\

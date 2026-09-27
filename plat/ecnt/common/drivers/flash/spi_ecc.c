@@ -457,14 +457,17 @@ SPI_ECC_RTN_T SPI_ECC_Decode_Check_Idle( SPI_ECC_DECODE_STATUS_T *prt_rtn_decode
 SPI_ECC_RTN_T SPI_ECC_Decode_Check_Done( SPI_ECC_DECODE_STATUS_T *prt_rtn_decode_status_t, u8 sec_num )
 {
 	u32 			ret_val = 0;
+	u32				done_mask = 0;
 
 	ret_val = _SPI_ECC_REG16_READ(_SPI_ECC_REGS_DECDONE);
 
-	if ((sec_num == 4) && (ret_val == 0xF))
-	{
-		*prt_rtn_decode_status_t = SPI_ECC_DECODE_STATUS_DONE;
-	}
-	else if ((sec_num == 8) && (ret_val == 0xFF))
+	/* DECDONE bit n records completion of ECC sector n, for 1 to 8 sectors.
+	 * Only 4 and 8 were accepted before, so a single sector transfer (the
+	 * parallel NAND first-sector read) could never be seen as complete. */
+	if (sec_num >= 1 && sec_num <= 8)
+		done_mask = (1U << sec_num) - 1;
+
+	if (done_mask && (ret_val & done_mask) == done_mask)
 	{
 		*prt_rtn_decode_status_t = SPI_ECC_DECODE_STATUS_DONE;
 	}
