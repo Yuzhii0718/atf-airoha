@@ -22,7 +22,7 @@
 # ECC DMA reads, OP-TEE) mirror the per-SOC scripts
 # build-an7581.sh / build-an7583.sh / build-an7552.sh / build-en7523.sh under
 # scripts/.  Parallel NAND is no longer a switch: it is compiled in by default
-# for an7581 / an7583 (see the PARALLEL_NAND_* setup below).
+# for an7581 / an7583 / an7552 (see the PARALLEL_NAND_* setup below).
 #===============================================================================
 
 set -e
@@ -131,7 +131,7 @@ OPTEE="${OPTEE:-no}"    # OPTEE=yes -> build BL2/BL31 with OP-TEE (BL32) support
 PARALLEL_NAND_BL2_OPT=""    # extra make var for BL23 when parallel NAND is enabled
 PARALLEL_NAND_CFLAGS=""     # extra BSP_CFLAGS for the BL2 stages
 case "${SOC}" in
-    an7581|an7583)
+    an7581|an7583|an7552)
         PARALLEL_NAND_BL2_OPT="TCSUPPORT_PARALLEL_NAND=1"
         PARALLEL_NAND_CFLAGS="-DTCSUPPORT_PARALLEL_NAND"
         ;;
