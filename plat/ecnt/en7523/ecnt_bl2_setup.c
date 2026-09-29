@@ -360,13 +360,11 @@ void bl2_plat_preload_setup(void)
 	{
 		if (hw_trap.fw_upgrade_mode && !(hw_trap.skip_fw_upgrade) && !(plat_get_hw_bypass()))
 		{
-			int len = 0;
-
 			flash_read_status = flash_read(PLAT_ECNT_FIP_OFFSET, PLAT_ECNT_FIP_MAX_SIZE, (uint8_t *)  PLAT_ECNT_FIP_BASE);
 			if ((flash_read_status == FLASH_READ_STATUS_INCORRECT) ||
 			     (flash_read_status == FLASH_READ_STATUS_CORRECT && plat_check_bypass() != BYPASS_FWUPGRADE))
 			{
-				len = ecnt_xmodem_recovery(&console,
+				(void)ecnt_xmodem_recovery(&console,
 						       (uintptr_t)PLAT_ECNT_FIP_BASE,
 						       PLAT_ECNT_FIP_MAX_SIZE);
 
