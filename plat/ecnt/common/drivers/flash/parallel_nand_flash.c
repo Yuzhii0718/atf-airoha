@@ -167,10 +167,12 @@ static void parallel_nand_chip_select_by_page(u32 *p_page_number)
  * PURPOSE : Apply the AC timing of the detected device.
  *------------------------------------------------------------------------------------
  */
+#if !defined(TCSUPPORT_CPU_EN7581)
 static void parallel_nand_setting_timing(void)
 {
 	PARALLEL_NFI_SET_TIMING(ptr_dev_info_t->timing_setting);
 }
+#endif /* !defined(TCSUPPORT_CPU_EN7581) */
 
 /*------------------------------------------------------------------------------------
  * FUNCTION: static void parallel_nand_initial_hw( void )
