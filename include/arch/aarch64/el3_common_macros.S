@@ -117,7 +117,11 @@
 	 * vendor BL31 binaries (which program CPTR_EL3 = 0).
 	 * ---------------------------------------------------------------------
 	 */
+#if defined(TCSUPPORT_UBOOT_64BIT)
+	mov_imm x0, CPTR_EL3_RESET_VAL
+#else
 	mov_imm x0, (CPTR_EL3_RESET_VAL & ~(TCPAC_BIT | TAM_BIT | TTA_BIT | TFP_BIT))
+#endif
 	msr	cptr_el3, x0
 
 	/*
