@@ -53,6 +53,8 @@ unsigned int rst_vector_base_addr = RVBADDRESS_CPU0;
 extern int console_ecnt_register(uintptr_t baseaddr, console_t *console);
 extern int ecnt_xmodem_recovery(console_t *console, uintptr_t loadaddr,
 				 size_t max_size);
+extern int ecnt_xmodem_recovery_prompt(console_t *console,
+				       unsigned int timeout_ms);
 extern void get_bootimage_by_npu_iNIC(unsigned int imgDstAddr);
 extern void disable_NPU_dbgMsg(void);
 extern void phy_config_efuse_load(void);
@@ -324,6 +326,20 @@ static void fip_preload_xmodem_recover(const char *reason)
 	plat_ecnt_io_switch_to_memmap();
 	fip_image_xmodem_load((void *)(uintptr_t)PLAT_ECNT_FIP_BASE,
 			      PLAT_ECNT_FIP_MAX_SIZE);
+}
+
+/*
+ * Window during which the operator can divert an otherwise successful boot
+ * into XMODEM recovery. This covers the case of a well-formed but unbootable
+ * FIP (for instance a U-Boot that never brings up its console), which none of
+ * the read/verify paths above can detect.
+ */
+#define PLAT_ECNT_FIP_RECOVERY_TIMEOUT_MS	1000U
+
+int plat_ecnt_fip_recovery_prompt(void)
+{
+	return ecnt_xmodem_recovery_prompt(&console,
+					  PLAT_ECNT_FIP_RECOVERY_TIMEOUT_MS);
 }
 #endif
 

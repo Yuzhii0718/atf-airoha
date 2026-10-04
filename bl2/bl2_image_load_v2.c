@@ -23,6 +23,7 @@ extern void bl2_mem_params_backup(void);
 extern void bl2_mem_params_restore(void);
 extern void plat_ecnt_io_switch_to_memmap(void);
 extern int fip_image_xmodem_load(void *loadaddr, int max_size);
+extern int plat_ecnt_fip_recovery_prompt(void);
 #endif
 
 static int bl2_do_load_images(void)
@@ -101,15 +102,39 @@ struct entry_point_info *bl2_load_images()
 {
 	bl_params_t *bl2_to_next_bl_params;
 	int err;
+#if defined(IMAGE_BL23)
+	int recovery;
+#endif
 
 #if defined(IMAGE_BL23)
 	bl2_mem_params_backup();
 #endif
 	err = bl2_do_load_images();
+
+#if defined(IMAGE_BL23)
+	/*
+	 * A FIP that loads and verifies cleanly is not necessarily one that
+	 * boots: the images may be well-formed yet unable to start up (a U-Boot
+	 * that never opens its console, for instance). Before handing control
+	 * over to BL31, offer the operator a short window to divert into XMODEM
+	 * recovery; letting it expire boots the stored image as usual.
+	 */
+	recovery = (err == 0) && (plat_ecnt_fip_recovery_prompt() != 0);
+	if (recovery)
+		NOTICE("XMODEM recovery selected, using the downloaded FIP\n");
+#endif
+
 	if (err != 0) {
 #if !defined(IMAGE_BL23)
 		plat_error_handler(err);
 #else
+		ERROR("Stored BL31 + U-Boot FIP failed (%i)\n", err);
+		recovery = 1;
+#endif
+	}
+
+#if defined(IMAGE_BL23)
+	if (recovery != 0) {
 		for (;;) {
 			/*
 			 * bl2_plat_handle_pre_image_load() and load_auth_image()
@@ -125,7 +150,6 @@ struct entry_point_info *bl2_load_images()
 			 */
 			plat_ecnt_io_switch_to_memmap();
 
-			ERROR("Stored BL31 + U-Boot FIP failed (%i)\n", err);
 			fip_image_xmodem_load((void *)(uintptr_t)PLAT_ECNT_FIP_BASE,
 					      PLAT_ECNT_FIP_MAX_SIZE);
 
@@ -136,8 +160,8 @@ struct entry_point_info *bl2_load_images()
 			ERROR("Downloaded FIP failed verification (%i); retrying\n",
 			      err);
 		}
-#endif
 	}
+#endif
 
 	/*
 	 * Get information to pass to the next image.

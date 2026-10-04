@@ -9,6 +9,10 @@
  * XMODEM protocol and keeps booting from the image just downloaded. This
  * allows rescuing a device whose firmware was erased or corrupted.
  *
+ * A valid FIP is not necessarily a bootable one, so BL2 also offers a short
+ * countdown before handing control over to BL31, giving the operator a chance
+ * to divert into the same recovery path. See ecnt_xmodem_recovery_prompt().
+ *
  * Ported from the MediaTek APSOC XMODEM recovery (same author), adapted to
  * drive the serial console through the registered console_t instead of raw
  * MMIO, so it works on every SoC without hard-coding a UART base address.
@@ -19,10 +23,17 @@
 
 #include <common/debug.h>
 #include <drivers/console.h>
+#include <drivers/delay_timer.h>
 
 #include <xmodem.h>
 
 extern int plat_check_header(uint8_t *base);
+
+/*
+ * Console poll granularity while waiting for the operator. A 10 ms slice
+ * makes the prompt feel instantaneous without hammering the UART FIFO.
+ */
+#define XMODEM_PROMPT_POLL_US	10000U
 
 /*
  * The UART is driven through the console framework: XMODEM needs a
@@ -78,4 +89,33 @@ int ecnt_xmodem_recovery(console_t *console, uintptr_t loadaddr,
 		ERROR("XMODEM FIP is incomplete or has an invalid TOC header (%d)\n",
 		      ret);
 	}
+}
+
+int ecnt_xmodem_recovery_prompt(console_t *console, unsigned int timeout_ms)
+{
+	unsigned int secs = (timeout_ms + 999U) / 1000U;
+	unsigned int elapsed;
+	unsigned int sec;
+
+	xmodem_console = console;
+	console_flush();
+
+	/*
+	 * Count down on the console while sampling the receive FIFO. Any key
+	 * other than 'x' is ignored so that a stray character cannot drop the
+	 * operator into recovery by accident.
+	 */
+	for (sec = secs; sec != 0U; sec--) {
+		NOTICE("Press 'x' within %u s to enter XMODEM recovery\n", sec);
+
+		for (elapsed = 0U; elapsed < 1000U;
+		     elapsed += XMODEM_PROMPT_POLL_US / 1000U) {
+			if (xmodem_console_getc() == 'x')
+				return 1;
+
+			udelay(XMODEM_PROMPT_POLL_US);
+		}
+	}
+
+	return 0;
 }
