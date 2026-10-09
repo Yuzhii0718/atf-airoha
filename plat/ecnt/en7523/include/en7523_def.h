@@ -64,6 +64,8 @@
 #define EN7523_SCREG_WF1	(IO_PHYS + 0xFB00244)
 #define EN7523_SCREG_WR0	(IO_PHYS + 0xFB00280)
 #define EN7523_SCREG_WR1	(IO_PHYS + 0xFB00284)
+/* The WF and WR banks hold two registers each; offsets past them (0x248,
+ * 0x288, ...) are not implemented and read back as 0xDEADBEEF. */
 #define EN7581_R2C_SEL		(IO_PHYS + 0xFB00074)
 #define CR_NP_SCU_PDIDR		(IO_PHYS + 0xFB0005C)
 
@@ -174,6 +176,53 @@
 #define DBG_FLASH_MODE	0x752303
 #define DBG_INIC_MDIO_MODE 0x758101
 #define DBG_7583_BOOT_MAGIC    0x03
+
+/*******************************************************************************
+ * BL2 -> BL33 boot-source handoff
+ *
+ * BL2 publishes which storage the FIP it finally booted came from, so that
+ * BL33 (U-Boot) can tell a normal flash boot from a RAM recovery boot (the
+ * FIP was received over the XMODEM console and never touched the flash).
+ * U-Boot reads the register on demand (see the NP-SCU boot source helpers)
+ * and warns the user in the Web failsafe when the session is a volatile
+ * RAM one, which is the state in which forgetting to flash a bootloader
+ * bricks the device on the next reset.
+ *
+ * Register choice. The scratch area of the NP-SCU is two banks of two
+ * registers, and the offsets in between/after them are NOT implemented: a
+ * read of e.g. 0x1FB00288 returns 0xDEADBEEF, the value this bus returns
+ * for an address it cannot access (see the vendor bus test, "if deadbeef,
+ * that means the address can't be accessed"), so that offset must not be
+ * used for a handoff.
+ *
+ *	WF0 0x240	BL1 debug / boot mode + BL2 error code
+ *	WF1 0x244	BL1 debug magic + BL1 error code
+ *	WR0 0x280	L2C SRAM size, written by BL31 for the kernel
+ *	WR1 0x284	SYS_GLOBAL_PARM (DRAM size, package id, ...)
+ *
+ * WR0/WR1 are read by U-Boot and by the kernel, so they must keep their
+ * content; WF0 is written by BL2's own plat_error_handler().  WF1 is the
+ * only one that no stage after BL2 consumes: BL1 reads it once, before BL2
+ * runs, to enable its verbose logging (see ecnt_bl1_setup.c, debug_init()),
+ * which is why BL2 leaves the register alone when it holds that magic.
+ *
+ * The register is written on every BL2 boot - in particular also on the
+ * flash path - because the NP-SCU is in the always-on domain and survives a
+ * warm reset: without rewriting it, a later flash boot would still read the
+ * value left behind by a RAM recovery session.
+ *
+ * Value layout: (EN7523_BOOTSRC_MAGIC << 16) | code. The full-word magic is
+ * what keeps an old BL2 (which leaves the register untouched, at whatever
+ * value it had) or a cold boot from being mistaken for a reported boot
+ * source: U-Boot reports "unknown" and stays quiet in that case.
+ ******************************************************************************/
+#define EN7523_SCREG_BOOTSRC		EN7523_SCREG_WF1
+
+#define EN7523_BOOTSRC_MAGIC		0x424C		/* "BL" */
+#define EN7523_BOOTSRC_FLASH		0x0001
+#define EN7523_BOOTSRC_XMODEM		0x0002
+#define EN7523_BOOTSRC_VALUE(_code)	((EN7523_BOOTSRC_MAGIC << 16) | \
+					 ((_code) & 0xFFFF))
 
 /*******************************************************************************
  * GIC

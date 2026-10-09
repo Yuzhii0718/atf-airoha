@@ -314,10 +314,60 @@ void bl2_plat_preload_setup_optimize(void)
 #if defined(IMAGE_BL23)
 extern void plat_ecnt_io_switch_to_memmap(void);
 
+/*
+ * Storage the FIP that BL2 is booting was finally read from. It starts at
+ * FLASH and is switched to XMODEM only once a console download has really
+ * delivered an image. bl2_plat_handle_post_image_load() publishes it to BL33
+ * (U-Boot) through EN7523_SCREG_BOOTSRC.
+ */
+static uint32_t bl2_bootsrc = EN7523_BOOTSRC_FLASH;
+
 int fip_image_xmodem_load(void *loadaddr, int max_size)
 {
-	return ecnt_xmodem_recovery(&console, (uintptr_t)loadaddr,
-				    (size_t)max_size);
+	int received;
+
+	received = ecnt_xmodem_recovery(&console, (uintptr_t)loadaddr,
+					(size_t)max_size);
+
+	/*
+	 * ecnt_xmodem_recovery() only returns once a complete image with a
+	 * valid FIP TOC header has been received, so any positive length
+	 * means the FIP that is about to be booted came over the console.
+	 */
+	if (received > 0)
+		bl2_bootsrc = EN7523_BOOTSRC_XMODEM;
+
+	return received;
+}
+
+/*
+ * Publish the boot source for BL33 (U-Boot), which reads it to tell a flash
+ * boot from a RAM (console recovery) session.  Called for every image of
+ * every load attempt, so the value always describes the images that are
+ * finally booted - including the re-load after a download replaced the FIP.
+ */
+static void bl2_publish_bootsrc(void)
+{
+	static uint32_t reported;
+
+	/*
+	 * BL1 keeps its own debug magic in this register and reads it back on
+	 * every boot, before BL2 runs; do not disturb it.  The boot source is
+	 * then simply not reported, i.e. U-Boot answers "unknown" and shows
+	 * no warning - the safe answer for a development build.
+	 */
+	if (mmio_read_32(EN7523_SCREG_BOOTSRC) == DEBUG_MAGIC)
+		return;
+
+	mmio_write_32(EN7523_SCREG_BOOTSRC, EN7523_BOOTSRC_VALUE(bl2_bootsrc));
+
+	/* One line per change, so a bring-up log shows what was booted. */
+	if (reported != bl2_bootsrc) {
+		reported = bl2_bootsrc;
+		NOTICE("BL2 boot source: %s\n",
+		       (bl2_bootsrc == EN7523_BOOTSRC_XMODEM) ?
+		       "XMODEM (RAM)" : "flash");
+	}
 }
 
 static void fip_preload_xmodem_recover(const char *reason)
@@ -504,6 +554,18 @@ int bl2_plat_handle_post_image_load(unsigned int image_id)
 		if (ret)
 			return ret;
 	}
+
+	/*
+	 * Publish the storage the FIP that is being booted came from, for
+	 * BL33 (U-Boot) to read later on.  Publishing on every boot - the
+	 * flash path included - is also what keeps a warm reset from letting
+	 * a flash boot read the value left behind by an earlier RAM recovery
+	 * session: the NP-SCU register survives the reset.  BL31 runs between
+	 * BL2 and BL33 and does not touch this register.
+	 */
+#if defined(IMAGE_BL23)
+	bl2_publish_bootsrc();
+#endif
 
 	#if defined(TCSUPPORT_TPL_ENC)
 	unsigned char* pSSK = get_ssk();
