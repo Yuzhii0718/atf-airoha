@@ -447,11 +447,16 @@ void plat_ecnt_io_setup(const hw_trap_t *hw_trap)
 	policies[FIP_IMAGE_ID] = &fip_memmap_policy;
 
 #if defined(IMAGE_BL23) && defined(TCSUPPORT_UBI_SUPPORT)
-	/* Expect UBI if we are on NAND AND we are not in recovery procedure */
+	/*
+	 * Expect UBI if we are on NAND AND we are not in recovery procedure.
+	 * A requested XMODEM recovery deliberately stays on the memmap policy:
+	 * the FIP is about to be uploaded into DRAM, so the multi-second UBI
+	 * scan would only delay the recovery prompt that was already answered.
+	 */
 #if defined(TCSUPPORT_EMMC)
-	if (!hw_trap->is_emmc &&
+	if (!plat_ecnt_fip_recovery_requested() && !hw_trap->is_emmc &&
 #else
-	if (
+	if (!plat_ecnt_fip_recovery_requested() &&
 #endif
 	    (!hw_trap->fw_upgrade_mode || hw_trap->skip_fw_upgrade || plat_get_hw_bypass())) {
 		policies[FIP_IMAGE_ID] = &fip_ubi_policy;

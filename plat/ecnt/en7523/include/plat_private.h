@@ -35,6 +35,8 @@ typedef struct hw_trap {
  ******************************************************************************/
 #if defined(IMAGE_BL23)
 int mtk_fip_image_setup(uintptr_t *dev_handle, uintptr_t *image_spec);
+int plat_ecnt_fip_recovery_prompt(void);
+int plat_ecnt_fip_recovery_requested(void);
 #endif
 #if defined(IMAGE_BL31)
 int efuse_write_pkgid(uint8_t id, uint8_t remark);

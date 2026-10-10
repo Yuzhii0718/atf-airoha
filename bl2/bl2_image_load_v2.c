@@ -23,7 +23,7 @@ extern void bl2_mem_params_backup(void);
 extern void bl2_mem_params_restore(void);
 extern void plat_ecnt_io_switch_to_memmap(void);
 extern int fip_image_xmodem_load(void *loadaddr, int max_size);
-extern int plat_ecnt_fip_recovery_prompt(void);
+extern int plat_ecnt_fip_recovery_requested(void);
 #endif
 
 static int bl2_do_load_images(void)
@@ -101,7 +101,7 @@ static int bl2_do_load_images(void)
 struct entry_point_info *bl2_load_images()
 {
 	bl_params_t *bl2_to_next_bl_params;
-	int err;
+	int err = 0;
 #if defined(IMAGE_BL23)
 	int recovery;
 #endif
@@ -109,19 +109,21 @@ struct entry_point_info *bl2_load_images()
 #if defined(IMAGE_BL23)
 	bl2_mem_params_backup();
 #endif
-	err = bl2_do_load_images();
 
 #if defined(IMAGE_BL23)
 	/*
-	 * A FIP that loads and verifies cleanly is not necessarily one that
-	 * boots: the images may be well-formed yet unable to start up (a U-Boot
-	 * that never opens its console, for instance). Before handing control
-	 * over to BL31, offer the operator a short window to divert into XMODEM
-	 * recovery; letting it expire boots the stored image as usual.
+	 * The operator was already offered the XMODEM recovery window by
+	 * bl2_plat_preload_setup(), before the storage backends were brought
+	 * up, so that neither the UBI scan nor the stored FIP read is paid for
+	 * when the image is going to be replaced anyway. Honour that answer:
+	 * the loop below downloads the replacement and loads it from memory
+	 * instead of reading the stored FIP.
 	 */
-	recovery = (err == 0) && (plat_ecnt_fip_recovery_prompt() != 0);
-	if (recovery)
-		NOTICE("XMODEM recovery selected, using the downloaded FIP\n");
+	recovery = (plat_ecnt_fip_recovery_requested() != 0);
+	if (!recovery)
+		err = bl2_do_load_images();
+#else
+	err = bl2_do_load_images();
 #endif
 
 	if (err != 0) {

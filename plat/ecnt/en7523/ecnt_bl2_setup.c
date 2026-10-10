@@ -379,17 +379,35 @@ static void fip_preload_xmodem_recover(const char *reason)
 }
 
 /*
- * Window during which the operator can divert an otherwise successful boot
- * into XMODEM recovery. This covers the case of a well-formed but unbootable
- * FIP (for instance a U-Boot that never brings up its console), which none of
- * the read/verify paths above can detect.
+ * Window during which the operator can divert the boot into XMODEM recovery.
+ *
+ * It is offered before any storage backend is brought up, because the UBI scan
+ * alone costs seconds on a large NAND and a device whose FIP is about to be
+ * replaced over the console does not need that scan - nor the stored FIP. This
+ * also covers a well-formed but unbootable FIP (for instance a U-Boot that
+ * never brings up its console), which none of the read/verify paths can detect.
+ *
+ * The answer is latched so that plat_ecnt_io_setup() can skip the UBI scan and
+ * bl2_load_images() can skip the stored FIP.
  */
 #define PLAT_ECNT_FIP_RECOVERY_TIMEOUT_MS	1000U
 
+static int fip_recovery_requested;
+
 int plat_ecnt_fip_recovery_prompt(void)
 {
-	return ecnt_xmodem_recovery_prompt(&console,
-					  PLAT_ECNT_FIP_RECOVERY_TIMEOUT_MS);
+	fip_recovery_requested = ecnt_xmodem_recovery_prompt(&console,
+					PLAT_ECNT_FIP_RECOVERY_TIMEOUT_MS);
+
+	if (fip_recovery_requested)
+		NOTICE("XMODEM recovery selected, skipping the stored FIP\n");
+
+	return fip_recovery_requested;
+}
+
+int plat_ecnt_fip_recovery_requested(void)
+{
+	return fip_recovery_requested;
 }
 #endif
 
@@ -407,6 +425,25 @@ void bl2_plat_preload_setup(void)
 #if !defined(IMAGE_BL21) && !defined(IMAGE_BL22)
 
 	image_decompress_init(EN7523_IMAGE_BUF_OFFSET, EN7523_IMAGE_BUF_SIZE, lzmaBuffToBuffDecompress);
+
+#if defined(IMAGE_BL23)
+	/*
+	 * Offer the XMODEM recovery window before anything storage related is
+	 * touched: the UBI scan alone costs seconds on a large NAND, and there
+	 * is no point paying for it (nor for the stored FIP read) when the
+	 * operator is going to replace the image over the console anyway.
+	 *
+	 * Only the I/O layer is brought up here, and it keeps the memmap FIP
+	 * policy because plat_ecnt_io_setup() skips the UBI scan as well.
+	 * bl2_load_images() then fetches the replacement over XMODEM and loads
+	 * it straight from memory.
+	 */
+	if (plat_ecnt_fip_recovery_prompt() != 0)
+	{
+		bl2_platform_setup();
+		return;
+	}
+#endif
 
 	bl2_platform_setup();
 
