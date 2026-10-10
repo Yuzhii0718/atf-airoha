@@ -17,15 +17,22 @@ Prepare Environment:
 sudo apt install -y lzma lzma-dev gcc-aarch64-linux-gnu build-essential unzip xz-utils
 ```
 
-Toolchain:
+Toolchain and mbedTLS:
 
 ```bash
-wget -O dl/arm-gnu-toolchain-15.3.rel1-x86_64-arm-none-eabi.tar.xz https://gitlab.arm.com/api/v4/projects/tooling%2Fgnu-toolchains-for-arm/packages/generic/gnu-toolchain/15.3.rel1/arm-gnu-toolchain-15.3.rel1-x86_64-arm-none-eabi.tar.xz
+./scripts/download-tools.sh
 ```
 
-MbedTLS:
+`build.sh` extracts both archives on its first run, and calls the same script
+automatically when one is missing (`AUTO_DL=1`, the default; `AUTO_DL=0` fails
+instead). The script is download-only and safe to re-run; `--force` re-downloads.
+For reference it fetches:
 
 ```bash
+# dl/arm-gnu-toolchain-15.3.rel1-x86_64-arm-none-eabi.tar.xz
+wget -O dl/arm-gnu-toolchain-15.3.rel1-x86_64-arm-none-eabi.tar.xz https://gitlab.arm.com/api/v4/projects/tooling%2Fgnu-toolchains-for-arm/packages/generic/gnu-toolchain/15.3.rel1/arm-gnu-toolchain-15.3.rel1-x86_64-arm-none-eabi.tar.xz
+
+# dl/mbedtls-72718dd87e087215ce9155a826ee5a66cfbe9631.zip
 wget -O dl/mbedtls-72718dd87e087215ce9155a826ee5a66cfbe9631.zip https://github.com/Mbed-TLS/mbedtls/archive/72718dd87e087215ce9155a826ee5a66cfbe9631.zip
 ```
 
