@@ -23,6 +23,12 @@
 # build-an7581.sh / build-an7583.sh / build-an7552.sh / build-en7523.sh under
 # scripts/.  Parallel NAND is no longer a switch: it is compiled in by default
 # for an7581 / an7583 / an7552 (see the PARALLEL_NAND_* setup below).
+#
+# Host dependencies: the AArch32 (arm-none-eabi) toolchain and mbedTLS are read
+# from dl/ and extracted on first use.  When an archive is missing it is fetched
+# with scripts/download-tools.sh (AUTO_DL=1, the default); set AUTO_DL=0 to fail
+# with the manual instructions instead.  The host also needs lzma, unzip and
+# aarch64-linux-gnu-gcc (see README.md).
 #===============================================================================
 
 set -e
@@ -192,6 +198,19 @@ PACK_SCRIPT="${ATF_DIR}/scripts/airoha_pack_bl2.sh"
 PLAT="en7523"
 
 #------------------------------------------------------------------------------
+# Host dependency archives (dl/)
+#
+# build.sh consumes two archives from dl/ (see README.md): the AArch32 toolchain
+# tarball and the mbedTLS zip.  When one is missing and AUTO_DL=1 (the default),
+# scripts/download-tools.sh fetches it (it skips whatever is already present);
+# AUTO_DL=0 turns the automatic fetch off so the build reports the manual steps.
+#------------------------------------------------------------------------------
+AUTO_DL="${AUTO_DL:-1}"
+TOOLCHAIN_TARBALL="${ATF_DIR}/dl/arm-gnu-toolchain-15.3.rel1-x86_64-arm-none-eabi.tar.xz"
+MBEDTLS_ZIP="${ATF_DIR}/dl/mbedtls-72718dd87e087215ce9155a826ee5a66cfbe9631.zip"
+DOWNLOAD_TOOLS="${ATF_DIR}/scripts/download-tools.sh"
+
+#------------------------------------------------------------------------------
 # Universal Build Flags for BL2 and BL31
 #------------------------------------------------------------------------------
 # Note: the top-level Makefile resolves the aarch32 compiler to ARM32TOOLCHAIN_BASE
@@ -256,17 +275,24 @@ check_environment() {
     step "Environment Check [SOC: ${SOC_UPPER}]"
 
     # --- ARM32 Toolchain ---
+    # Fetch the dl/ archives first when one of them is missing (AUTO_DL=1): the
+    # toolchain is extracted just below, mbedTLS further down.
+    if [ "${AUTO_DL}" = "1" ] && [ -x "${DOWNLOAD_TOOLS}" ] && \
+       { [ ! -f "${TOOLCHAIN_TARBALL}" ] || [ ! -f "${MBEDTLS_ZIP}" ]; }; then
+        info "Missing dl/ archive(s), running scripts/download-tools.sh ..."
+        "${DOWNLOAD_TOOLS}" || warn "scripts/download-tools.sh failed; continuing with what is present."
+    fi
+
     if [ ! -f "${AARCH32_CROSS}gcc" ]; then
-        local TL_TARBALL="${SCRIPT_DIR}/dl/arm-gnu-toolchain-15.3.rel1-x86_64-arm-none-eabi.tar.xz"
-        if [ -f "${TL_TARBALL}" ]; then
+        if [ -f "${TOOLCHAIN_TARBALL}" ]; then
             warn "ARM32 Toolchain not found, automatically extracting from dl/ to ${AARCH32_TOOLCHAIN_DIR} ..."
             mkdir -p "$(dirname "${AARCH32_TOOLCHAIN_DIR}")"
-            tar -xf "${TL_TARBALL}" -C "$(dirname "${AARCH32_TOOLCHAIN_DIR}")"
+            tar -xf "${TOOLCHAIN_TARBALL}" -C "$(dirname "${AARCH32_TOOLCHAIN_DIR}")"
         fi
     fi
     if [ ! -f "${AARCH32_CROSS}gcc" ]; then
         error "ARM32 Toolchain not found: ${AARCH32_CROSS}gcc"
-        error "Please manually extract: tar -xf dl/arm-gnu-toolchain-15.3.rel1-x86_64-arm-none-eabi.tar.xz -C .."
+        error "Download it with: ${DOWNLOAD_TOOLS}"
         error "Or set the environment variable: export AARCH32_TOOLCHAIN_DIR=/path/to/toolchain"
         exit 1
     fi
@@ -282,14 +308,18 @@ check_environment() {
 
     # --- mbedtls ---
     if [ ! -d "${MBEDTLS_DIR}" ]; then
-        local MBEDTLS_ZIP="${SCRIPT_DIR}/dl/mbedtls-72718dd87e087215ce9155a826ee5a66cfbe9631.zip"
         if [ -f "${MBEDTLS_ZIP}" ]; then
             warn "mbedtls not found, automatically extracting from dl/..."
             unzip -qo "${MBEDTLS_ZIP}" -d /tmp/
             mv /tmp/mbedtls-72718dd87e087215ce9155a826ee5a66cfbe9631 "${MBEDTLS_DIR}"
         fi
     fi
-    [ -d "${MBEDTLS_DIR}" ] || { error "mbedtls not found: ${MBEDTLS_DIR}"; exit 1; }
+    [ -d "${MBEDTLS_DIR}" ] || {
+        error "mbedtls not found: ${MBEDTLS_DIR}"
+        error "Download it with: ${DOWNLOAD_TOOLS}"
+        error "Or unpack ${MBEDTLS_ZIP} and move the tree to ${MBEDTLS_DIR}."
+        exit 1
+    }
     info "mbedtls: ${MBEDTLS_DIR}"
 
     # --- lzma ---
