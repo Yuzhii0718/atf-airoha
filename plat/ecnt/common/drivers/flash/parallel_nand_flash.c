@@ -518,10 +518,16 @@ SPI_NAND_FLASH_RTN_T parallel_nand_probe(struct SPI_NAND_FLASH_INFO_T *ptr_rtn_d
 
 	rtn_status = parallel_nand_scan_flash_table(ptr_rtn_device_t);
 	if (rtn_status != SPI_NAND_FLASH_RTN_NO_ERROR) {
-		ERROR("parallel_nand: unknown device, mfr_id=0x%x dev_id=0x%x ext_id=0x%x\n",
-		      ptr_rtn_device_t->mfr_id, ptr_rtn_device_t->dev_id, ptr_rtn_device_t->ext_id);
+		NOTICE("parallel_nand_probe: unsupported parallel NAND chip mfr=0x%02x dev=0x%02x ext=0x%08x\n",
+		       ptr_rtn_device_t->mfr_id, ptr_rtn_device_t->dev_id,
+		       ptr_rtn_device_t->ext_id);
 		return rtn_status;
 	}
+
+	NOTICE("parallel_nand_probe: mfr=0x%02x dev=0x%02x ext=0x%08x chip=%s\n",
+	       ptr_rtn_device_t->mfr_id, ptr_rtn_device_t->dev_id,
+	       ptr_rtn_device_t->ext_id,
+	       ptr_rtn_device_t->ptr_name ? (const char *)ptr_rtn_device_t->ptr_name : "unknown");
 
 	INFO("parallel_nand: %s size=0x%x page=0x%x erase=0x%x oob=0x%x feature=0x%x\n",
 	     (const char *)ptr_rtn_device_t->ptr_name, ptr_rtn_device_t->device_size,
