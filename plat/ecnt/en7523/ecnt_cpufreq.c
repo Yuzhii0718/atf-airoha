@@ -90,9 +90,16 @@ static unsigned char cpu_freq_config_posdiv[]=  {VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,V
                                                  VAL_0,VAL_0,VAL_0,VAL_0,VAL_0,VAL_0,VAL_0,VAL_0};
 static char *clk_src_name[]={"xtal(50MHz)","armpll(500~1600MHz)","pll1(540MHz)","pll2(400MHz)"};
 #elif defined(TCSUPPORT_CPU_AN7552)
-static unsigned char cpu_freq_config_pcw[]=     { 0x14, 0x16, 0x18, 0x1A, 0x1C, 0x1E, 0x20, 0x22, 0x24, 0x26, 0x14};
-static unsigned char cpu_freq_config_posdiv[]=  {VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_0};
-static char *clk_src_name[]={"xtal(50MHz)","armpll(500~1000MHz)","pll1(540MHz)","pll2(400MHz)"};
+/* AN7552: < 1000MHz -> posdiv = 1 -> freq = pcw * 25
+ *          >= 1000MHz -> posdiv = 0 -> freq = pcw * 50
+ * The 1000..1200MHz entries (index 10..14) are the same as EN7581/AN7583,
+ * so the OPP range stops at 1.2GHz like the EN7523 family.
+ */
+static unsigned char cpu_freq_config_pcw[]=     { 0x14, 0x16, 0x18, 0x1A, 0x1C, 0x1E, 0x20, 0x22, 0x24, 0x26,
+                                                  0x14, 0x15, 0x16, 0x17, 0x18};
+static unsigned char cpu_freq_config_posdiv[]=  {VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,VAL_1,
+                                                 VAL_0,VAL_0,VAL_0,VAL_0,VAL_0};
+static char *clk_src_name[]={"xtal(50MHz)","armpll(500~1200MHz)","pll1(540MHz)","pll2(400MHz)"};
 #else
 /*
  * SYSPLL PCW values, index == enum e_cpu_freq.
