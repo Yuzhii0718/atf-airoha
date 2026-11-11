@@ -100,12 +100,21 @@ FLASH_INIT_T flash_init(hw_trap_t *hw_trap)
 	if (hwtrap->is_spi_nand_device_ecc ||
 		hwtrap->is_spi_nand_ctrl_ecc ||
 		hwtrap->is_parallel_nand) {
+		if (hwtrap->is_parallel_nand)
+			NOTICE("flash: mode=parallel NAND\n");
+		else if (hwtrap->is_spi_nand_ctrl_ecc)
+			NOTICE("flash: mode=SPI NAND (SoC ECC)\n");
+		else
+			NOTICE("flash: mode=SPI NAND (on-die ECC)\n");
+
 		if (nandflash_init(0) != 0) {
 			return FLASH_INIT_FAIL;
 		}
 	}
 #else
 	if (IS_NANDFLASH) {
+		NOTICE("flash: mode=%s NAND\n", isParallelNAND ? "parallel" : "SPI");
+
  		if (nandflash_init(0) != 0) {
 			return FLASH_INIT_FAIL;
 		}
@@ -121,6 +130,8 @@ FLASH_INIT_T flash_init(hw_trap_t *hw_trap)
 			return FLASH_INIT_FAIL;
 		}
 
+		NOTICE("flash: mode=eMMC\n");
+
 		/* The eMMC data pin and cmd pin should enable internal PU before mmc init. */
 		mmio_write_32(RG_I2C0_SDA_PU, (mmio_read_32(RG_I2C0_SDA_PU) | EMMC_CMD));
 		mmio_write_32(RG_GPIO_L_PU, (mmio_read_32(RG_GPIO_L_PU) | (EMMC_DATA0) | (EMMC_DATA1) | (EMMC_DATA2) | (EMMC_DATA3) | (EMMC_DATA4) | (EMMC_DATA5) | (EMMC_DATA6) | (EMMC_DATA7)));
@@ -132,6 +143,7 @@ FLASH_INIT_T flash_init(hw_trap_t *hw_trap)
 	} 
 #endif
 	else {
+		NOTICE("flash: mode=SPI NOR\n");
 		spi_nor_init();
 	}
 
