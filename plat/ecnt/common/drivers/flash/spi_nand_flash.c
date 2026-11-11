@@ -34,6 +34,11 @@
  */
 
 /* INCLUDE FILE DECLARATIONS --------------------------------------------------------- */
+/* ATF BL2 stages use NOTICE() for the always-on chip identification print. */
+#if defined(IMAGE_BL2) || defined(IMAGE_BL21) || defined(IMAGE_BL22) || defined(IMAGE_BL23)
+#include <common/debug.h>
+#endif
+
 #include <linux/version.h>
 
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,30)
@@ -5006,6 +5011,22 @@ static SPI_NAND_FLASH_RTN_T spi_nand_probe( struct SPI_NAND_FLASH_INFO_T *ptr_rt
 	}
 	_SPI_NAND_PRINTF("\n");
 
+	/*
+	 * Always report the detected chip (id + model) and, importantly, when
+	 * the id is not in the table.  _SPI_NAND_PRINTF is compiled out unless
+	 * SPI_NAND_FLASH_DEBUG is defined, so use NOTICE for the ATF BL2 build.
+	 */
+#if defined(IMAGE_BL2) || defined(IMAGE_BL21) || defined(IMAGE_BL22) || defined(IMAGE_BL23)
+	if (rtn_status == SPI_NAND_FLASH_RTN_NO_ERROR) {
+		NOTICE("spi_nand_probe: mfr=0x%02x dev=0x%02x chip=%s\n",
+		       ptr_rtn_device_t->mfr_id, ptr_rtn_device_t->dev_id,
+		       ptr_rtn_device_t->ptr_name ? (const char *)ptr_rtn_device_t->ptr_name : "unknown");
+	} else {
+		NOTICE("spi_nand_probe: unsupported SPI NAND chip mfr=0x%02x dev=0x%02x\n",
+		       ptr_rtn_device_t->mfr_id, ptr_rtn_device_t->dev_id);
+	}
+#endif
+
 #ifdef BOOTROM_EXT
 	prom_puts("===mfr_id:0x");
 	prom_print_hex(ptr_rtn_device_t->mfr_id, 2);
@@ -5022,15 +5043,6 @@ static SPI_NAND_FLASH_RTN_T spi_nand_probe( struct SPI_NAND_FLASH_INFO_T *ptr_rt
 	}
 
 	prom_puts("===\n");
-#endif
-
-#if 0 //defined(IMAGE_BL2)
-	NOTICE("mfr_id:0x%02x, dev_id:0x%02x\n", _current_flash_info_t.mfr_id, _current_flash_info_t.dev_id);
-	if (ptr_rtn_device_t->extend_dev_id.extend_len) {
-		for (i=0 ; i<MAX_SPI_NAND_FLASH_EXTEND_DEV_ID_LEN ; i++) {
-			NOTICE(" %02x", ptr_rtn_device_t->extend_dev_id.extend_id[i]);
-		}
-	}
 #endif
 
 	if(rtn_status == SPI_NAND_FLASH_RTN_NO_ERROR)
