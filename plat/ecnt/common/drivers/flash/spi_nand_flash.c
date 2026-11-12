@@ -118,6 +118,7 @@
 #endif
 
 #include <ecnt_spi_nand_flash.h>
+#include "mtk-snand-def.h"
 #include <ecnt_spi_controller.h>
 #include <ecnt_spi_nfi.h>
 #include <ecnt_spi_ecc.h>
@@ -149,25 +150,25 @@
 
 /* NAMING CONSTANT DECLARATIONS ------------------------------------------------------ */
 
-/* SPI NAND Command Set */
-#define _SPI_NAND_OP_GET_FEATURE					0x0F	/* Get Feature */
-#define _SPI_NAND_OP_SET_FEATURE					0x1F	/* Set Feature */
-#define _SPI_NAND_OP_PAGE_READ						0x13	/* Load page data into cache of SPI NAND chip */
-#define _SPI_NAND_OP_READ_FROM_CACHE_SINGLE			0x03	/* Read data from cache of SPI NAND chip, single speed*/
-#define _SPI_NAND_OP_READ_FROM_CACHE_DUAL			0x3B	/* Read data from cache of SPI NAND chip, dual speed*/
-#define _SPI_NAND_OP_READ_FROM_CACHE_QUAD			0x6B	/* Read data from cache of SPI NAND chip, quad speed*/
-#define _SPI_NAND_OP_WRITE_ENABLE					0x06	/* Enable write data to  SPI NAND chip */
-#define _SPI_NAND_OP_WRITE_DISABLE					0x04	/* Reseting the Write Enable Latch (WEL) */
-#define _SPI_NAND_OP_PROGRAM_LOAD_SINGLE			0x02	/* Write data into cache of SPI NAND chip with cache reset, single speed */
-#define _SPI_NAND_OP_PROGRAM_LOAD_QUAD				0x32	/* Write data into cache of SPI NAND chip with cache reset, quad speed */
-#define _SPI_NAND_OP_PROGRAM_LOAD_RAMDOM_SINGLE		0x84	/* Write data into cache of SPI NAND chip, single speed */
-#define _SPI_NAND_OP_PROGRAM_LOAD_RAMDON_QUAD		0x34	/* Write data into cache of SPI NAND chip, quad speed */
+/* SPI NAND Command Set (values defined in mtk-snand-def.h) */
+#define _SPI_NAND_OP_GET_FEATURE			SNAND_CMD_GET_FEATURE
+#define _SPI_NAND_OP_SET_FEATURE			SNAND_CMD_SET_FEATURE
+#define _SPI_NAND_OP_PAGE_READ				SNAND_CMD_READ_TO_CACHE
+#define _SPI_NAND_OP_READ_FROM_CACHE_SINGLE		SNAND_CMD_READ_FROM_CACHE_SINGLE
+#define _SPI_NAND_OP_READ_FROM_CACHE_DUAL		SNAND_CMD_READ_FROM_CACHE_X2
+#define _SPI_NAND_OP_READ_FROM_CACHE_QUAD		SNAND_CMD_READ_FROM_CACHE_X4
+#define _SPI_NAND_OP_WRITE_ENABLE			SNAND_CMD_WRITE_ENABLE
+#define _SPI_NAND_OP_WRITE_DISABLE			SNAND_CMD_WRITE_DISABLE
+#define _SPI_NAND_OP_PROGRAM_LOAD_SINGLE		SNAND_CMD_PROGRAM_LOAD
+#define _SPI_NAND_OP_PROGRAM_LOAD_QUAD			SNAND_CMD_PROGRAM_LOAD_X4
+#define _SPI_NAND_OP_PROGRAM_LOAD_RAMDOM_SINGLE		SNAND_CMD_PROGRAM_LOAD_RANDOM
+#define _SPI_NAND_OP_PROGRAM_LOAD_RAMDON_QUAD		SNAND_CMD_PROGRAM_LOAD_RANDOM_X4
 
-#define _SPI_NAND_OP_PROGRAM_EXECUTE		0x10	/* Write data from cache into SPI NAND chip */
-#define _SPI_NAND_OP_READ_ID				0x9F	/* Read Manufacture ID and Device ID */
-#define _SPI_NAND_OP_BLOCK_ERASE			0xD8	/* Erase Block */
-#define _SPI_NAND_OP_RESET					0xFF	/* Reset */
-#define _SPI_NAND_OP_DIE_SELECT				0xC2	/* Die Select */
+#define _SPI_NAND_OP_PROGRAM_EXECUTE			SNAND_CMD_PROGRAM_EXECUTE
+#define _SPI_NAND_OP_READ_ID				SNAND_CMD_READID
+#define _SPI_NAND_OP_BLOCK_ERASE			SNAND_CMD_BLOCK_ERASE
+#define _SPI_NAND_OP_RESET				SNAND_CMD_RESET
+#define _SPI_NAND_OP_DIE_SELECT				SNAND_CMD_WINBOND_SELECT_DIE
 
 /* SPI NAND register address of command set */
 #define _SPI_NAND_ADDR_MANUFACTURE_ID		0x00	/* Address of Manufacture ID */
@@ -1000,6 +1001,46 @@ static SPI_NAND_FLASH_RTN_T spi_nand_protocol_read_id_2 ( struct SPI_NAND_FLASH_
 
 	_SPI_NAND_DEBUG_PRINTF(SPI_NAND_FLASH_DEBUG_LEVEL_1, "spi_nand_protocol_read_id_2 : mfr_id=0x%x, dev_id=0x%x\n", ptr_rtn_flash_id->mfr_id, ptr_rtn_flash_id->dev_id);
 	
+	return (rtn_status);
+}
+
+/*
+ * READ ID with one dummy byte (U-Boot's SPINAND_READID_METHOD_OPCODE_DUMMY).
+ * Some chips, only answer this sequence while a sibling with the same device
+ * ID answers the address-byte variant.
+ */
+static SPI_NAND_FLASH_RTN_T spi_nand_protocol_read_id_3 ( struct SPI_NAND_FLASH_INFO_T *ptr_rtn_flash_id )
+{
+	u8 i = 0;
+	SPI_NAND_FLASH_RTN_T	rtn_status = SPI_NAND_FLASH_RTN_NO_ERROR;
+
+	rtn_status = spi_nand_protocol_chk_status(_SPI_NAND_VAL_OIP, 0);
+	if(rtn_status != SPI_NAND_FLASH_RTN_NO_ERROR) {
+		_SPI_NAND_PRINTF("[Error] read id 3 Timeout.\n");
+		return (rtn_status);
+	}
+
+	/* 1. Chip Select Low */
+	_SPI_NAND_READ_CHIP_SELECT_LOW();
+
+	/* 2. Write op_cmd 0x9F (Read ID) + one dummy byte */
+	_SPI_NAND_WRITE_ONE_BYTE( _SPI_NAND_OP_READ_ID );
+	_SPI_NAND_WRITE_ONE_BYTE( 0xFF );
+
+	/* 3. Read data (Manufacture ID, Device ID and extension bytes) */
+	_SPI_NAND_READ_NBYTE( (u8 *)&(ptr_rtn_flash_id->mfr_id), _SPI_NAND_LEN_ONE_BYTE, SPI_CONTROLLER_SPEED_SINGLE);
+	_SPI_NAND_READ_NBYTE( (u8 *)&(ptr_rtn_flash_id->dev_id), _SPI_NAND_LEN_ONE_BYTE, SPI_CONTROLLER_SPEED_SINGLE);
+
+	for (i=0 ; i<MAX_SPI_NAND_FLASH_EXTEND_DEV_ID_LEN ; i++)
+	{
+		_SPI_NAND_READ_NBYTE( (u8 *)&(ptr_rtn_flash_id->extend_dev_id.extend_id[i]), _SPI_NAND_LEN_ONE_BYTE, SPI_CONTROLLER_SPEED_SINGLE);
+	}
+
+	/* 4. Chip Select High */
+	_SPI_NAND_READ_CHIP_SELECT_HIGH();
+
+	_SPI_NAND_DEBUG_PRINTF(SPI_NAND_FLASH_DEBUG_LEVEL_1, "spi_nand_protocol_read_id_3 : mfr_id=0x%x, dev_id=0x%x\n", ptr_rtn_flash_id->mfr_id, ptr_rtn_flash_id->dev_id);
+
 	return (rtn_status);
 }
 
@@ -3466,12 +3507,11 @@ UBIFS_BLANK_PAGE_ECC_T check_blank_page(u32 page_number)
 
 			return SPI_NAND_FLASH_UBIFS_BLANK_PAGE_ECC_MISMATCH; /* blank sector*/
 		}
-	} else if ((!isSpiNandAndCtrlECC) && (ptr_dev_info_t->mfr_id == _SPI_NAND_MANUFACTURER_ID_WINBOND)) {
-		if((ptr_dev_info_t->dev_id == _SPI_NAND_DEVICE_ID_W25N01GV) ||
-		   (ptr_dev_info_t->dev_id == _SPI_NAND_DEVICE_ID_W25M02GV)) {
-		   /* for winbond, if data has been written blank,
-		    * the ECC parity is all 0.
-		    */
+	} else if ((!isSpiNandAndCtrlECC) &&
+		   (ptr_dev_info_t->feature & SPI_NAND_FLASH_WINBOND_BLANK_PARITY)) {
+		/* for winbond, if data has been written blank,
+		 * the ECC parity is all 0.
+		 */
 			memset(ecc_parity_0, 0x0, sizeof(ecc_parity_0));
 
 			for(i = 0; i < 4; i++) {
@@ -3486,7 +3526,6 @@ UBIFS_BLANK_PAGE_ECC_T check_blank_page(u32 page_number)
 					return SPI_NAND_FLASH_UBIFS_BLANK_PAGE_ECC_MISMATCH; /* blank sector*/
 				}
 			}
-		}
 		
 		return SPI_NAND_FLASH_UBIFS_BLANK_PAGE_ECC_MATCH; /* Good Page*/
 	} else if(isEN7526c && isSpiNandAndCtrlECC) {
@@ -4984,21 +5023,31 @@ static SPI_NAND_FLASH_RTN_T spi_nand_probe( struct SPI_NAND_FLASH_INFO_T *ptr_rt
 
 	_SPI_NAND_DEBUG_PRINTF(SPI_NAND_FLASH_DEBUG_LEVEL_1, "spi_nand_probe: start \n");
 
-	/* Protocol for read id */
-	_SPI_NAND_SEMAPHORE_LOCK();	
-	spi_nand_protocol_read_id(ptr_rtn_device_t );
-	_SPI_NAND_SEMAPHORE_UNLOCK();	
+	/*
+	 * READ ID probe order matches U-Boot: OPCODE -> ADDR -> DUMMY.
+	 * Each method is matched against its own table entries; SNAND_ID_ANY
+	 * entries accept any of the three.
+	 */
+	_SPI_NAND_SEMAPHORE_LOCK();
+	spi_nand_protocol_read_id_2(ptr_rtn_device_t);
+	_SPI_NAND_SEMAPHORE_UNLOCK();
 
-	rtn_status = scan_spi_nand_table(ptr_rtn_device_t);
+	rtn_status = scan_spi_nand_table(ptr_rtn_device_t, SPI_NAND_READ_METHOD_OPCODE);
 
-	if ( rtn_status != SPI_NAND_FLASH_RTN_NO_ERROR )
-	{
-		/* Another protocol for read id  (For example, the GigaDevice SPI NADN chip for Type C */
-		_SPI_NAND_SEMAPHORE_LOCK();	
-		spi_nand_protocol_read_id_2( (struct SPI_NAND_FLASH_INFO_T *)ptr_rtn_device_t );
-		_SPI_NAND_SEMAPHORE_UNLOCK();	
+	if (rtn_status != SPI_NAND_FLASH_RTN_NO_ERROR) {
+		_SPI_NAND_SEMAPHORE_LOCK();
+		spi_nand_protocol_read_id(ptr_rtn_device_t);
+		_SPI_NAND_SEMAPHORE_UNLOCK();
 
-		rtn_status = scan_spi_nand_table(ptr_rtn_device_t);
+		rtn_status = scan_spi_nand_table(ptr_rtn_device_t, SPI_NAND_READ_METHOD_ADDR);
+	}
+
+	if (rtn_status != SPI_NAND_FLASH_RTN_NO_ERROR) {
+		_SPI_NAND_SEMAPHORE_LOCK();
+		spi_nand_protocol_read_id_3(ptr_rtn_device_t);
+		_SPI_NAND_SEMAPHORE_UNLOCK();
+
+		rtn_status = scan_spi_nand_table(ptr_rtn_device_t, SPI_NAND_READ_METHOD_DUMMY);
 	}
 
 	_SPI_NAND_PRINTF("spi_nand_probe: mfr_id=0x%x, dev_id=0x%x", ptr_rtn_device_t->mfr_id, ptr_rtn_device_t->dev_id);

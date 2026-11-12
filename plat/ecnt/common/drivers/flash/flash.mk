@@ -21,6 +21,7 @@ endif
 FLASH_SRCS	+= $(addprefix plat/ecnt/common/drivers/flash/,	\
 				spi_nand_flash.c				\
 				spi_nand_flash_table.c			\
+				mtk-snand-ids.c					\
 				spi_controller.c				\
 				spi_ecc.c						\
 				spi_nfi.c)

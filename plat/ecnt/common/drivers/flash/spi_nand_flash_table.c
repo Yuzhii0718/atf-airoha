@@ -12,2154 +12,45 @@
  * MODULE NAME: spi
  * FILE NAME: spi_nand_flash_table.c
  * DATE: 2017/08/06
- * VERSION: 1.00
+ * VERSION: 2.00
  * PURPOSE: To Provide SPI NAND Access interface.
  * NOTES:
+ *
+ *   The chip ID list is no longer maintained here.  It lives in a single
+ *   file, mtk-snand-ids.c: the upstream MediaTek table plus an appended
+ *   "ecnt extension" section for chips that U-Boot supports but the upstream
+ *   table does not.  Every entry is converted into the ecnt runtime
+ *   descriptor (struct SPI_NAND_FLASH_INFO_T) by ecnt_info_from_mtk().
+ *
+ *   Fields that the upstream table does not carry (OOB free layout, ECC
+ *   enable, write-enable ordering, ...) are derived from the chip geometry
+ *   and vendor; see ecnt_info_from_mtk().
+ *
  *======================================================================================
  */
 
+#include <stdint.h>
 #include <ecnt_spi_nand_flash.h>
 
-#if !defined(TCSUPPORT_BL2_OPTIMIZATION) || defined(FLASH_TABLE_OPEN) || !defined(IMAGE_BL2)
-
-struct spi_nand_flash_ooblayout ooblayout_type1 = {
-	.oobsize = 24, 
-	.oobfree = {{4,4}, {16,8}, {32,8}, {48,4}, {0, 0}}
-};
-
-struct spi_nand_flash_ooblayout ooblayout_type2 = {
-	.oobsize = 42, 
-	.oobfree = {{4,12}, {20,12}, {36,12}, {52,8}, {0, 0}}
-};
-
-struct spi_nand_flash_ooblayout ooblayout_type3 = {
-	.oobsize = 56, 
-	.oobfree = {{4,56}, {0, 0}}
-};
-
-struct spi_nand_flash_ooblayout ooblayout_type4 = {
-	.oobsize = 120, 
-	.oobfree = {{4,120}, {0, 0}}
-};
-
-struct spi_nand_flash_ooblayout ooblayout_type5 = {
-	.oobsize = 92, 
-	.oobfree = {{4,12}, {20,12}, {36,12}, {52,12}, {68,12}, {84,12}, {100,12}, {116,8}, {0, 0}}
-};
-
-struct spi_nand_flash_ooblayout ooblayout_type6 = {
-	.oobsize = 25, 
-	.oobfree = {{11,5}, {24,8}, {40,8}, {56,4}, {0,0}}
-};
-
-struct spi_nand_flash_ooblayout ooblayout_type7 = {
-	.oobsize = 20, 
-	.oobfree = {{0,4}, {4,4}, {20,4}, {36,4}, {52,4}}
-};
-
-#if 0 /* this is same to ooblayout_type7 */
-struct spi_nand_flash_ooblayout ooblayout_type8 = {
-	.oobsize = 20, 
-	.oobfree = {{0,4}, {4,4}, {20,4}, {36,4}, {52,4}}
-};
-#endif
-
-struct spi_nand_flash_ooblayout ooblayout_type9 = {
-	.oobsize = 56, 
-	.oobfree = {{4,12}, {30,16}, {60,16}, {90,12}, {0,0}}
-};
-
-struct spi_nand_flash_ooblayout ooblayout_type10 = {
-	.oobsize = 64, 
-	.oobfree = {{4,14}, {32,18}, {64,18}, {96,14}, {0,0}}
-};
-
-struct spi_nand_flash_ooblayout ooblayout_type11 = {
-	.oobsize = 136, 
-	.oobfree = {{4,14}, {32,18}, {64,18}, {96,18}, {128,18}, {160,18}, {192,18}, {224,14}, {0,0}}
-};
-
-struct spi_nand_flash_ooblayout ooblayout_type12 = {
-	.oobsize = 136, 
-	.oobfree = {{4,136}, {0,0}}
-};
-
-struct spi_nand_flash_ooblayout ooblayout_type13 = {
-	.oobsize = 28, 
-	.oobfree = {{32,28}, {0,0}}
-};
-
-#if 0
-struct spi_nand_flash_ooblayout ooblayout_type14 = {
-	.oobsize = 20, 
-	.oobfree = {{0,4}, {4,4}, {36,4}, {68,4}, {100,4}}
-};
-#endif
-
-struct spi_nand_flash_ooblayout ooblayout_type15 = {
-	.oobsize = 28, 
-	.oobfree = {{4,8}, {20,8}, {36,8}, {52,4}, {0,0}}
-};
-
-#if 0
-struct spi_nand_flash_ooblayout ooblayout_type16 = {
-	.oobsize = 44, 
-	.oobfree = {{0,4}, {4,2}, {19,2}, {34,2}, {49,2}, {96,32}}
-};
-
-struct spi_nand_flash_ooblayout ooblayout_type17 = {
-	.oobsize = 36, 
-	.oobfree = {{0,4}, {4,4}, {36,4}, {68,4}, {100,4}, {132,4}, {164,4}, {196,4}, {228,4}}
-};
-#endif
-
-struct spi_nand_flash_ooblayout ooblayout_type18 = {
-	.oobsize = 88, 
-	.oobfree = {{4,20}, {32,24},  {64,24}, {96,20}, {0, 0}}
-};
-
-struct spi_nand_flash_ooblayout ooblayout_type19 = {
-	.oobsize = 36, 
-	.oobfree = {{8,36}, {0, 0}}
-};
-
-struct spi_nand_flash_ooblayout ooblayout_type20 = {
-	.oobsize = 52, 
-	.oobfree = {{4, 14}, {22, 14}, {40, 14}, {58, 10}, {0, 0}}
-};
-
-struct spi_nand_flash_ooblayout ooblayout_type21 = {
-	.oobsize = 44,
-	.oobfree = {{4,12}, {20,12}, {36,12}, {52,8}, {0, 0}}
-};
-
-struct spi_nand_flash_ooblayout ooblayout_type22 = {
-	.oobsize = 8,
-	.oobfree = {{36,4}, {68,4}, {0,0}}
-};
-
-/* ===== OOB reserve for feature7 ===== */
-#if 0 //move to spi_nand_flash.c, because BL2 optimize
-struct spi_nand_flash_ooblayout ooblayout_feature7 = {
-	.oobsize = 3, 
-	.oobfree = {{8, 3}, {0, 0}}
-};
-#endif
-
-/* ===== SPI NAND Controller ECC ooblayout ===== */
-struct spi_nand_flash_ooblayout ooblayout_spi_controller_ecc = {
-	.oobsize = 24, 
-	.oobfree = {{4, 24}, {0, 0}}
-};
-
-/*****************************[ Notice]******************************/
-/* If new spi nand chip have page size more than 4KB,  or oob size more than 256 bytes,  than*/
-/* it will need to adjust the #define of _SPI_NAND_PAGE_SIZE and _SPI_NAND_OOB_SIZE */
-/*****************************[ Notice]******************************/
-
-const struct SPI_NAND_FLASH_INFO_T spi_nand_flash_tables[] = {
-	/* ===== Flash ECC ===== */
-
-	/* ===== GigaDevice ===== */
-#if 0
-	{
-		mfr_id:						_SPI_NAND_MANUFACTURER_ID_GIGADEVICE,
-		dev_id:						_SPI_NAND_DEVICE_ID_GD5F1GQ4UAYIG,
-		ptr_name:					"_SPI_NAND_DEVICE_ID_GD5F1GQ4UA",
-		device_size:				_SPI_NAND_CHIP_SIZE_1GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_64BYTE,
-		erase_size:					_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode:					SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout : 			&ooblayout_type15,
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_LOAD_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-#endif
-	{
-		mfr_id:						_SPI_NAND_MANUFACTURER_ID_GIGADEVICE,
-		dev_id:						_SPI_NAND_DEVICE_ID_GD5F1GQ4UBYIG,
-		ptr_name:					(const u8 *) "_SPI_NAND_DEVICE_ID_GD5F1GQ4UB",
-		device_size:				_SPI_NAND_CHIP_SIZE_1GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size:					_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode:					SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout : 			&ooblayout_type2,
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_LOAD_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-#if 0
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_GIGADEVICE,
-		dev_id: 					_SPI_NAND_DEVICE_ID_GD5F1GQ4UCYIG,
-		ptr_name:					"_SPI_NAND_DEVICE_ID_GD5F1GQ4UC",
-		device_size:				_SPI_NAND_CHIP_SIZE_1GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_PREPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout : 			&ooblayout_type3,
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x70, 0x70},
-		write_en_type:				SPI_NAND_FLASH_WRITE_LOAD_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-#endif
-
-	{
-		mfr_id:						_SPI_NAND_MANUFACTURER_ID_GIGADEVICE,
-		dev_id:						_SPI_NAND_DEVICE_ID_GD5F2GM7UEYIG,
-		ptr_name:					(const u8 *) "_SPI_NAND_DEVICE_ID_GD5F2GM7UEYIG",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size:					_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode:					SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout:			&ooblayout_type2,
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_LOAD_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id:						_SPI_NAND_MANUFACTURER_ID_GIGADEVICE,
-		dev_id:						_SPI_NAND_DEVICE_ID_GD5F2GQ4UBYIG,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_GD5F2GQ4UB",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size:					_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode:					SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout : 			&ooblayout_type2,
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_LOAD_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id:						_SPI_NAND_MANUFACTURER_ID_GIGADEVICE,
-		dev_id:						_SPI_NAND_DEVICE_ID_GD5F2GQ4UE9IS,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_GD5F2GQ4UE9IS",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size:					_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode:					SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout : 			&ooblayout_type2,
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_LOAD_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-#if 0
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_GIGADEVICE,
-		dev_id: 					_SPI_NAND_DEVICE_ID_GD5F2GQ4UCYIG,
-		ptr_name:					"_SPI_NAND_DEVICE_ID_GD5F2GQ4UC",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_PREPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout : 			&ooblayout_type3,
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x70, 0x70},
-		write_en_type:				SPI_NAND_FLASH_WRITE_LOAD_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-#endif
-	{
-		mfr_id:						_SPI_NAND_MANUFACTURER_ID_GIGADEVICE,
-		dev_id:						_SPI_NAND_DEVICE_ID_GD5F4GQ4UBYIG,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_GD5F4GQ4UB",
-		device_size:				_SPI_NAND_CHIP_SIZE_4GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_4KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_256BYTE,
-		erase_size:					_SPI_NAND_BLOCK_SIZE_256KBYTE,
-		dummy_mode:					SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout : 			&ooblayout_type5,
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS | SPI_NAND_FLASH_READ_ECC_ERROR_BIT_CHECK,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_LOAD_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-		read_ecc_ceck:				{_SPI_NAND_CHECK_ECC_THROSHOLD_BY_2REG, {0x30, 0x10, 0x0}, {_SPI_NAND_ADDR_STATUS_6, 0x20, 0x30}},
-	},
-#if 0
-	{
-		mfr_id:						_SPI_NAND_MANUFACTURER_ID_GIGADEVICE,
-		dev_id:						_SPI_NAND_DEVICE_ID_GD5F4GQ4UCYIG,
-		ptr_name:					"_SPI_NAND_DEVICE_ID_GD5F4GQ4UC",
-		device_size:				_SPI_NAND_CHIP_SIZE_4GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_4KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_256BYTE,
-		erase_size:					_SPI_NAND_BLOCK_SIZE_256KBYTE,
-		dummy_mode:					SPI_NAND_FLASH_READ_DUMMY_BYTE_PREPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout : 			&ooblayout_type4,
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x70, 0x70},
-		write_en_type:				SPI_NAND_FLASH_WRITE_LOAD_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},	
-#endif
-	/* ===== ESMT ===== */
-#if 0
-	{
-		mfr_id:						_SPI_NAND_MANUFACTURER_ID_ESMT,
-		dev_id:						_SPI_NAND_DEVICE_ID_F50L512M41A,
-		ptr_name:					"_SPI_NAND_DEVICE_ID_F50L512",
-		device_size:				_SPI_NAND_CHIP_SIZE_512MBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_64BYTE,
-		erase_size:					_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode:					SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout : 			&ooblayout_type6,
-		feature:					 SPI_NAND_FLASH_OOB_RESERVE_FOR_BMT | SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x0, 0x0},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-#endif
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_ESMT,
-		dev_id: 					_SPI_NAND_DEVICE_ID_F50L1G41A0,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_F50L1G",
-		device_size:				_SPI_NAND_CHIP_SIZE_1GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_64BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout : 			&ooblayout_type6,
-		feature:					SPI_NAND_FLASH_OOB_RESERVE_FOR_BMT | SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x0, 0x0},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},	
-
-	{
-		mfr_id:						_SPI_NAND_MANUFACTURER_ID_ESMT,
-		dev_id:						_SPI_NAND_DEVICE_ID_F50L1G41LB,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_F50L1G41LB",
-		device_size:				_SPI_NAND_CHIP_SIZE_1GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_64BYTE,
-		erase_size:					_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode:					SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout : 			&ooblayout_type7,
-		feature:					SPI_NAND_FLASH_FEATURE_NONE,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x7C, 0x0},
-		quad_en:					{0x0, 0x0},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id:						_SPI_NAND_MANUFACTURER_ID_ESMT,
-		dev_id:						_SPI_NAND_DEVICE_ID_F50L2G41LB,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_F50L2G41LB",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_64BYTE,
-		erase_size:					_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode:					SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout : 			&ooblayout_type7,
-		feature:					SPI_NAND_FLASH_DIE_SELECT_1_HAVE,
-		die_num:					2,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x7C, 0x0},
-		quad_en:					{0x0, 0x0},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	/* ===== Winbond ===== */
-	{
-		mfr_id:						_SPI_NAND_MANUFACTURER_ID_WINBOND,
-		dev_id:						_SPI_NAND_DEVICE_ID_W25N01GV,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_W25N01G",
-		device_size:				_SPI_NAND_CHIP_SIZE_1GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_64BYTE,
-		erase_size:					_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode:					SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout : 			&ooblayout_type7,
-		feature:					SPI_NAND_FLASH_BLANK_PAGE_FIXUP,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0xFB, 0x0},
-		quad_en:					{0x0, 0x0},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				12,
-#endif
-		extend_dev_id:				_SPI_NAND_DEVICE_ID_W25N01GV_EXTEND,
-	},
-
-	{
-		mfr_id:						_SPI_NAND_MANUFACTURER_ID_WINBOND,
-		dev_id:						_SPI_NAND_DEVICE_ID_W25N01KV,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_W25N01KV",
-		device_size:				_SPI_NAND_CHIP_SIZE_1GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_96BYTE,
-		erase_size:					_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode:					SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout : 			&ooblayout_type21,
-		feature:					SPI_NAND_FLASH_READ_ECC_ERROR_BIT_CHECK,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x78, 0x0},
-		quad_en:					{0x0, 0x0},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				12,
-#endif
-		extend_dev_id:				_SPI_NAND_DEVICE_ID_W25N01KV_EXTEND,
-		read_ecc_ceck:				{_SPI_NAND_CHECK_ECC_THROSHOLD_BY_FLASH, {0x30, 0x0, 0x0}, {_SPI_NAND_ADDR_EXTEND_BFD, 0x30, 0x0}},
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_WINBOND,
-		dev_id: 					_SPI_NAND_DEVICE_ID_W25N02KV,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_W25N02K",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode: 				SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type21,
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS | SPI_NAND_FLASH_READ_ECC_ERROR_BIT_CHECK,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x7C, 0x0},
-		quad_en:					{0x0, 0x0},
-		ecc_en: 					{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				12,
-#endif
-		extend_dev_id:				_SPI_NAND_DEVICE_ID_W25N02KV_EXTEND,
-		read_ecc_ceck:				{_SPI_NAND_CHECK_ECC_THROSHOLD_BY_FLASH, {0x30, 0x0, 0x0}, {_SPI_NAND_ADDR_EXTEND_BFD, 0x60, 0x0}},
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_WINBOND,
-		dev_id: 					_SPI_NAND_DEVICE_ID_W25N04KV,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_W25N04K",
-		device_size:				_SPI_NAND_CHIP_SIZE_4GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode: 				SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type21,
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS | SPI_NAND_FLASH_READ_ECC_ERROR_BIT_CHECK,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x7C, 0x0},
-		quad_en:					{0x0, 0x0},
-		ecc_en: 					{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DEVICE_ID_W25N04KV_EXTEND,
-		read_ecc_ceck:				{_SPI_NAND_CHECK_ECC_THROSHOLD_BY_FLASH, {0x30, 0x0, 0x0}, {_SPI_NAND_ADDR_EXTEND_BFD, 0x60, 0x0}},
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_WINBOND,
-		dev_id: 					_SPI_NAND_DEVICE_ID_W25M02GV,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_W25M02G",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_64BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout : 			&ooblayout_type7,
-		feature:					SPI_NAND_FLASH_DIE_SELECT_1_HAVE | SPI_NAND_FLASH_BLANK_PAGE_FIXUP,
-		die_num:					2,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0xFB, 0x0},
-		quad_en:					{0x0, 0x0},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				12,
-#endif
-		extend_dev_id:				_SPI_NAND_DEVICE_ID_W25N02GV_EXTEND,
-	},		
-
-	/* ===== MXIC ===== */
-	{
-		mfr_id:						_SPI_NAND_MANUFACTURER_ID_MXIC,
-		dev_id:						_SPI_NAND_DEVICE_ID_MXIC35LF1GE4AB,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_MXIC35LF1G",
-		device_size:				_SPI_NAND_CHIP_SIZE_1GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_64BYTE,
-		erase_size:					_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode:					SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout : 			&ooblayout_type7,
-		feature:					SPI_NAND_FLASH_FEATURE_NONE,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id:						_SPI_NAND_MANUFACTURER_ID_MXIC,
-		dev_id:						_SPI_NAND_DEVICE_ID_MXIC35LF2GE4AB,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_MXIC35LF2G",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_64BYTE,
-		erase_size:					_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode:					SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout : 			&ooblayout_type2,
-		feature:					SPI_NAND_FLASH_PLANE_SELECT_HAVE | SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-	
-	{
-		mfr_id:						_SPI_NAND_MANUFACTURER_ID_MXIC,
-		dev_id:						_SPI_NAND_DEVICE_ID_MXIC35LF2GE4AD,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_MXIC35LF2GE4AD",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size:					_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode:					SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout : 			&ooblayout_type2,
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	/* ===== Zentel ===== */
-#if 0
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_ZENTEL,
-		dev_id: 					_SPI_NAND_DEVICE_ID_A5U12A21ASC,
-		ptr_name:					"_SPI_NAND_DEVICE_ID_A5U12A21ASC",
-		device_size:				_SPI_NAND_CHIP_SIZE_512MBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_64BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout : 			&ooblayout_type6,		
-		feature:					SPI_NAND_FLASH_OOB_RESERVE_FOR_BMT | SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x0, 0x0},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-	
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_ZENTEL,
-		dev_id: 					_SPI_NAND_DEVICE_ID_A5U1GA21BWS,
-		ptr_name:					"_SPI_NAND_DEVICE_ID_A5U1GA21BWS",
-		device_size:				_SPI_NAND_CHIP_SIZE_1GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_64BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout : 			&ooblayout_type6,		
-		feature:					SPI_NAND_FLASH_OOB_RESERVE_FOR_BMT | SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x0, 0x0},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},	
-#endif
-
-	/* ===== Etron ===== */
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_ETRON,
-		dev_id: 					_SPI_NAND_DEVICE_ID_EM73C044SNB,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_EM73C044SNB",
-		device_size:				_SPI_NAND_CHIP_SIZE_1GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout : 			&ooblayout_type9,		
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				4,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_ETRON,
-		dev_id: 					_SPI_NAND_DEVICE_ID_EM73C044SND,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_EM73C044SND",
-		device_size:				_SPI_NAND_CHIP_SIZE_1GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_64BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout : 			&ooblayout_type1,		
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				4,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_ETRON,
-		dev_id: 					_SPI_NAND_DEVICE_ID_EM73C044SNF,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_EM73C044SNF",
-		device_size:				_SPI_NAND_CHIP_SIZE_1GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout : 			&ooblayout_type10,		
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				4,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_ETRON,
-		dev_id: 					_SPI_NAND_DEVICE_ID_EM73C044VCA,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_EM73C044VCA",
-		device_size:				_SPI_NAND_CHIP_SIZE_1GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_64BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout : 			&ooblayout_type1,		
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				4,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_ETRON,
-		dev_id: 					_SPI_NAND_DEVICE_ID_EM73C044VCD,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_EM73C044VCD",
-		device_size:				_SPI_NAND_CHIP_SIZE_1GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_64BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout : 			&ooblayout_type1,		
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				4,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_ETRON,
-		dev_id: 					_SPI_NAND_DEVICE_ID_EM73D044SNA,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_EM73D044SNA",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type10,		
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				4,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_ETRON,
-		dev_id: 					_SPI_NAND_DEVICE_ID_EM73D044SNC,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_EM73D044SNC",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type9,		
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				4,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_ETRON,
-		dev_id: 					_SPI_NAND_DEVICE_ID_EM73D044SND,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_EM73D044SND",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_64BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type1,
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				4,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_ETRON,
-		dev_id: 					_SPI_NAND_DEVICE_ID_EM73D044SNF,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_EM73D044SNF",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type10,		
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				4,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_ETRON,
-		dev_id: 					_SPI_NAND_DEVICE_ID_EM73D044VCA,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_EM73D044VCA",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type18,		
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				4,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_ETRON,
-		dev_id: 					_SPI_NAND_DEVICE_ID_EM73D044VCB,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_EM73D044VCB",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_64BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type1,		
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				4,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_ETRON,
-		dev_id: 					_SPI_NAND_DEVICE_ID_EM73D044VCD,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_EM73D044VCD",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type10,		
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				4,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_ETRON,
-		dev_id: 					_SPI_NAND_DEVICE_ID_EM73D044VCG,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_EM73D044VCG",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_64BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type1,		
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				4,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_ETRON,
-		dev_id: 					_SPI_NAND_DEVICE_ID_EM73D044VCH,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_EM73D044VCH",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_64BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type1,		
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				4,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_ETRON,
-		dev_id: 					_SPI_NAND_DEVICE_ID_EM73E044SNA,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_EM73E044SNA",
-		device_size:				_SPI_NAND_CHIP_SIZE_4GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_4KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_256BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_256KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type11,		
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				4,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_ETRON,
-		dev_id: 					_SPI_NAND_DEVICE_ID_EM73F044SNA,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_EM73F044SNA",
-		device_size:				_SPI_NAND_CHIP_SIZE_8GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_4KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_256BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_256KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type12,		
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				4,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_ETRON,
-		dev_id: 					_SPI_NAND_DEVICE_ID_EM73E044VCA,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_EM73E044VCA",
-		device_size:				_SPI_NAND_CHIP_SIZE_4GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_4KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_256BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_256KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode: 				SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type12,		
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en: 					{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_ETRON,
-		dev_id: 					_SPI_NAND_DEVICE_ID_EM73E044VCB,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_EM73E044VCB",
-		device_size:				_SPI_NAND_CHIP_SIZE_4GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode: 				SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type20,		
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en: 					{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-
-	/* ===== Toshiba ===== */
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_TOSHIBA,
-		dev_id: 					_SPI_NAND_DEVICE_ID_TC58CVG0S3H,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_TC58CVG0S3H",
-		device_size:				_SPI_NAND_CHIP_SIZE_1GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_64BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout : 			&ooblayout_type3,		
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x0, 0x0},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},		
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_TOSHIBA,
-		dev_id: 					_SPI_NAND_DEVICE_ID_TC58CVG1S3H,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_TC58CVG1S3H",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_64BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout : 			&ooblayout_type3,		
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x0, 0x0},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	}, 
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_TOSHIBA,
-		dev_id: 					_SPI_NAND_DEVICE_ID_TC58CVG2S0H,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_TC58CVG2S0H",
-		device_size:				_SPI_NAND_CHIP_SIZE_4GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_4KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_256KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout : 			&ooblayout_type4,		
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x0, 0x0},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	}, 
-
-#if 1
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_TOSHIBA,
-		dev_id: 					_SPI_NAND_DEVICE_ID_TC58CVG2S0HRAIJ,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_TC58CVG2S0HRAIJ",
-		device_size:				_SPI_NAND_CHIP_SIZE_4GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_4KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_256KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode: 				SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type4,
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x0, 0x0},
-		ecc_en: 					{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-#endif
-
-	/* ===== Micron ===== */
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_MICRON,
-		dev_id: 					_SPI_NAND_DEVICE_ID_MT29F1G01,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_MT29F1G01",
-		device_size:				_SPI_NAND_CHIP_SIZE_1GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type13, 	
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x70, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x7C, 0x0},
-		quad_en:					{0x0, 0x0},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},		
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_MICRON,
-		dev_id: 					_SPI_NAND_DEVICE_ID_MT29F2G01,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_MT29F2G01",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type13, 	
-		feature:					SPI_NAND_FLASH_PLANE_SELECT_HAVE | SPI_NAND_FLASH_ERASE_STATISTICS | SPI_NAND_FLASH_READ_ECC_ERROR_BIT_CHECK,
-		die_num:					1,
-		ecc_fail_check_info:		{0x70, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x7C, 0x0},
-		quad_en:					{0x0, 0x0},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-		read_ecc_ceck:				{_SPI_NAND_CHECK_ECC_THROSHOLD_BY_REG, {0x50, 0x0, 0x0}, {0x0, 0x0, 0x0}},
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_MICRON,
-		dev_id: 					_SPI_NAND_DEVICE_ID_MT29F4G01,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_MT29F4G01",
-		device_size:				_SPI_NAND_CHIP_SIZE_4GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type13, 	
-		feature:					SPI_NAND_FLASH_PLANE_SELECT_HAVE | SPI_NAND_FLASH_DIE_SELECT_2_HAVE | SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					2,
-		ecc_fail_check_info:		{0x70, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x7C, 0x0},
-		quad_en:					{0x0, 0x0},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	/* ===== HeYangTek ===== */
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_HEYANG,
-		dev_id: 					_SPI_NAND_DEVICE_ID_HYF2GQ4UAACAE,
-		ptr_name:					(const u8 *) "_SPI_NAND_DEVICE_ID_HYF2GQ4UAACAE",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type22, 	
-		feature:					SPI_NAND_FLASH_BLANK_PAGE_FIXUP | SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	/* ===== SKYHIGH ===== */
-	{
-		mfr_id:						_SPI_NAND_MANUFACTURER_ID_SKYHIGH,
-		dev_id:						_SPI_NAND_DEVICE_ID_S35ML02G3,
-		ptr_name:					(const u8 *) "_SPI_NAND_DEVICE_ID_S35ML02G3",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode: 				SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type4,
-		feature:					SPI_NAND_FLASH_BLANK_PAGE_FIXUP | SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x30},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x7A, 0x2},
-		quad_en:					{0x00, 0x00},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-#if 0 /* not verify */
-{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_MICRON,
-		dev_id: 					_SPI_NAND_DEVICE_ID_MT29F4G01_33V,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_MT29F4G01_33V",
-		device_size:				_SPI_NAND_CHIP_SIZE_4GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_4KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_256BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_256KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type4, 	
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x70, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x7C, 0x0},
-		quad_en:					{0x0, 0x0},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-#endif
-
-#if 0
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_MICRON,
-		dev_id: 					_SPI_NAND_DEVICE_ID_MT29F4G01AD,
-		ptr_name:					"_SPI_NAND_DEVICE_ID_MT29F4G01AD",
-		device_size:				_SPI_NAND_CHIP_SIZE_4GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_4KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_256KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type4, 	
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x70, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x7C, 0x0},
-		quad_en:					{0x0, 0x0},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-#endif
-
-#if 0
-	/* ===== HeYangTek ===== */
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_HEYANG,
-		dev_id: 					_SPI_NAND_DEVICE_ID_HYF1GQ4UAACAE,
-		ptr_name:					"_SPI_NAND_DEVICE_ID_HYF1GQ4UAACAE",
-		device_size:				_SPI_NAND_CHIP_SIZE_1GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type14, 	
-		feature:					SPI_NAND_FLASH_FEATURE_NONE,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_HEYANG,
-		dev_id: 					_SPI_NAND_DEVICE_ID_HYF2GQ4UHCCAE,
-		ptr_name:					"_SPI_NAND_DEVICE_ID_HYF2GQ4UHCCAE",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type14, 	
-		feature:					SPI_NAND_FLASH_FEATURE_NONE,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_HEYANG,
-		dev_id: 					_SPI_NAND_DEVICE_ID_HYF4GQ4UAACBE,
-		ptr_name:					"_SPI_NAND_DEVICE_ID_HYF4GQ4UAACBE",
-		device_size:				_SPI_NAND_CHIP_SIZE_4GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_4KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_256BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_256KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type17, 	
-		feature:					SPI_NAND_FLASH_FEATURE_NONE,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_HEYANG,
-		dev_id: 					_SPI_NAND_DEVICE_ID_HYF1GQ4UDACAE,
-		ptr_name:					"_SPI_NAND_DEVICE_ID_HYF1GQ4UDACAE",
-		device_size:				_SPI_NAND_CHIP_SIZE_1GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_64BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type7,
-		feature:					SPI_NAND_FLASH_FEATURE_NONE,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_HEYANG,
-		dev_id: 					_SPI_NAND_DEVICE_ID_HYF2GQ4UDACAE,
-		ptr_name:					"_SPI_NAND_DEVICE_ID_HYF2GQ4UDACAE",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_64BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type7,
-		feature:					SPI_NAND_FLASH_FEATURE_NONE,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-#endif
-
-#if !defined(TCSUPPORT_AUTOBENCH)
-#if 0
-	/* ===== PN ===== */
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_PN,
-		dev_id: 					_SPI_NAND_DEVICE_ID_PN26G01AWSIUG,
-		ptr_name:					"_SPI_NAND_DEVICE_ID_PN26G01A-X",
-		device_size:				_SPI_NAND_CHIP_SIZE_1GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type16, 	
-		feature:					SPI_NAND_FLASH_FEATURE_NONE,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_LOAD_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_ECC, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_PN,
-		dev_id: 					_SPI_NAND_DEVICE_ID_PN26G02AWSIUG,
-		ptr_name:					"_SPI_NAND_DEVICE_ID_PN26G02A-X",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type16, 	
-		feature:					SPI_NAND_FLASH_FEATURE_NONE,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_LOAD_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_ECC, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-#endif
-
-	/* ===== ATO ===== */
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_ATO,
-		dev_id: 					_SPI_NAND_DEVICE_ID_ATO25D1GA,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_ATO25D1GA",
-		device_size:				_SPI_NAND_CHIP_SIZE_1GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_64BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_SINGLE,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type3, 	
-		feature:					SPI_NAND_FLASH_NO_ECC_STATUS_HAVE | SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x0, 0x0},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x00, 0x00},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	/* ===== FM ===== */
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_FM,
-		dev_id: 					_SPI_NAND_DEVICE_ID_FM25S01,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_FM25S01",
-		device_size:				_SPI_NAND_CHIP_SIZE_1GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type3, 	
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x78, 0x0},
-		quad_en:					{0x00, 0x00},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_FM,
-		dev_id: 					_SPI_NAND_DEVICE_ID_FM25S01A,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_FM25S01A",
-		device_size:				_SPI_NAND_CHIP_SIZE_1GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_64BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type3, 	
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x78, 0x0},
-		quad_en:					{0x00, 0x00},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_FM,
-		dev_id: 					_SPI_NAND_DEVICE_ID_FM25G01B,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_FM25G01B",
-		device_size:				_SPI_NAND_CHIP_SIZE_1GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type3, 	
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x70, 0x70},
-		write_en_type:				SPI_NAND_FLASH_WRITE_LOAD_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_ECC, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_FM,
-		dev_id: 					_SPI_NAND_DEVICE_ID_FM25G02B,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_FM25G02B",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type3, 	
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x70, 0x70},
-		write_en_type:				SPI_NAND_FLASH_WRITE_LOAD_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_ECC, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_FM,
-		dev_id: 					_SPI_NAND_DEVICE_ID_FM25G02,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_FM25G02",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_64BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type1, 	
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x70, 0x70},
-		write_en_type:				SPI_NAND_FLASH_WRITE_LOAD_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_ECC, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	/* ===== XTX ===== */
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_XTX,
-		dev_id: 					_SPI_NAND_DEVICE_ID_XT26G02B,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_XT26G02B",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_64BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type1, 	
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x70, 0x70},
-		write_en_type:				SPI_NAND_FLASH_WRITE_LOAD_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_ECC, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_XTX,
-		dev_id: 					_SPI_NAND_DEVICE_ID_XT26G01A,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_XT26G01A",
-		device_size:				_SPI_NAND_CHIP_SIZE_1GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_64BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type19, 	
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x3C, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_LOAD_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_XTX,
-		dev_id: 					_SPI_NAND_DEVICE_ID_XT26G02A,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_XT26G02A",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_64BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type19, 	
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_LOAD_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-
-	/* ===== MIRA ===== */
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_MIRA,
-		dev_id: 					_SPI_NAND_DEVICE_ID_PSU1GS20BN,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_PSU1GS20BN",
-		device_size:				_SPI_NAND_CHIP_SIZE_1GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_64BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout : 			&ooblayout_type6,
-		feature:					SPI_NAND_FLASH_OOB_RESERVE_FOR_BMT | SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x0, 0x0},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	/* ===== BIWIN ===== */
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_BIWIN,
-		dev_id: 					_SPI_NAND_DEVICE_ID_BWJX08U,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_BWJX08U",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_64BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type15, 	
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_BIWIN,
-		dev_id: 					_SPI_NAND_DEVICE_ID_BWET08U,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_BWET08U",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type10, 	
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x30, 0x20},
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	/* ===== FORESEE ===== */
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_FORESEE,
-		dev_id: 					_SPI_NAND_DEVICE_ID_FS35ND01GD1F1,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_FS35ND01GD1F1",
-		device_size:				_SPI_NAND_CHIP_SIZE_1GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_64BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type1, 	
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x70, 0x70},
-		write_en_type:				SPI_NAND_FLASH_WRITE_LOAD_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_ECC, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-	
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_FORESEE,
-		dev_id: 					_SPI_NAND_DEVICE_ID_FS35ND02GS2F1,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_FS35ND02GS2F1",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type1, 	
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x70, 0x70},
-		write_en_type:				SPI_NAND_FLASH_WRITE_LOAD_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_ECC, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_FORESEE,
-		dev_id: 					_SPI_NAND_DEVICE_ID_FS35ND02GD1F1,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_FS35ND02GD1F1",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type1, 	
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x70, 0x70},
-		write_en_type:				SPI_NAND_FLASH_WRITE_LOAD_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_ECC, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	{
-		mfr_id: 					_SPI_NAND_MANUFACTURER_ID_FORESEE,
-		dev_id: 					_SPI_NAND_DEVICE_ID_F35SQB002G,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_F35SQB002G",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size: 				_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode: 				SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout :			&ooblayout_type1,
-		feature:					SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		ecc_fail_check_info:		{0x70, 0x70},
-		write_en_type:				SPI_NAND_FLASH_WRITE_LOAD_FIRST,
-		unlock_block_info:			{0x7C, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x10, 0x10},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-	},
-
-	/* ===== SPI controller ECC ===== */
-		
-	/* ===== MXIC ===== */
-	{
-		mfr_id:						_SPI_NAND_MANUFACTURER_ID_MXIC,
-		dev_id:						_SPI_NAND_DEVICE_ID_MXIC35LF2G14AC,
-		ptr_name:					(const u8 *) " _SPI_NAND_DEVICE_ID_MXIC35LF2G14AC",
-		device_size:				_SPI_NAND_CHIP_SIZE_2GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_64BYTE,
-		erase_size:					_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode:					SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout : 			&ooblayout_spi_controller_ecc,
-		feature:					SPI_NAND_FLASH_PLANE_SELECT_HAVE | SPI_NAND_FLASH_ERASE_STATISTICS,
-		die_num:					1,
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x00, 0x00},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-		soc_ecc_ability:			4,
-	},
-#endif
-	{
-		mfr_id:						_SPI_NAND_MANUFACTURER_ID_MXIC,
-		dev_id:						_SPI_NAND_DEVICE_ID_MXIC35LF1G24AD,
-		ptr_name:					(const u8 *)"_SPI_NAND_DEVICE_ID_MXIC35LF1G24AD",
-		device_size:				_SPI_NAND_CHIP_SIZE_1GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size:					_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode:					SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout : 			&ooblayout_spi_controller_ecc,
-		feature:					SPI_NAND_FLASH_NO_ECC_STATUS_HAVE | SPI_NAND_FLASH_DISABLE_CONTINUOUS_RD,
-		die_num:					1,
-		write_en_type:				SPI_NAND_FLASH_WRITE_EN_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x00, 0x00},
-#ifdef TCSUPPORT_NAND_FLASH_OTP
-		otp_page_num:				-1,
-#endif
-		soc_ecc_ability:			12,
-	},
-
-#if 0
-	/* ===== GD ===== */
-	{
-		mfr_id:						_SPI_NAND_MANUFACTURER_ID_GIGADEVICE,
-		dev_id:						_SPI_NAND_DEVICE_ID_GD5E1GQ4UBYIG,
-		ptr_name:					(const u8 *) "_SPI_NAND_DEVICE_ID_GD5E1GQ4UBYIG",
-		device_size:				_SPI_NAND_CHIP_SIZE_1GBIT,
-		page_size:					_SPI_NAND_PAGE_SIZE_2KBYTE,
-		oob_size:					_SPI_NAND_OOB_SIZE_128BYTE,
-		erase_size:					_SPI_NAND_BLOCK_SIZE_128KBYTE,
-		dummy_mode:					SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
-		read_mode:					SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
-		write_mode:					SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE,
-		oob_free_layout : 			&ooblayout_spi_controller_ecc,
-		feature:					SPI_NAND_FLASH_FEATURE_NONE,
-		die_num:					1,
-		write_en_type:				SPI_NAND_FLASH_WRITE_LOAD_FIRST,
-		unlock_block_info:			{0x38, 0x0},
-		quad_en:					{0x01, 0x01},
-		ecc_en:						{_SPI_NAND_ADDR_FEATURE, 0x00, 0x00},
-		extend_dev_id:				_SPI_NAND_DUMMY_EXTEND_DEVICE_ID,
-		soc_ecc_ability:			12,
-	},
-#endif
-};
-
-#else
+extern struct spi_nand_flash_ooblayout *snand_oob_layout_by_id(u8 id);
+extern const struct snand_quirks *snand_quirk_get(u8 id);
+#include "mtk-snand-def.h"
+
+#if defined(TCSUPPORT_BL2_OPTIMIZATION) && defined(IMAGE_BL2) && !defined(FLASH_TABLE_OPEN)
+
+/*======================================================================================
+ * BL2 optimized runtime
+ *
+ * flash.mk links mtk-snand-ids.c unconditionally, but this translation unit
+ * never references the table in the BL2 branch; --gc-sections drops the
+ * unused table/layout symbols.  The runtime descriptor is deserialized from
+ * flash_table.bin, which the host generator below produces from that table.
+ *======================================================================================*/
 
 #include <platform_def.h>
 
-
 struct SPI_NAND_FLASH_INFO_T spi_nand_flash_tables[1];
-/* ===== SPI NAND Controller ECC ooblayout ===== */
-struct spi_nand_flash_ooblayout ooblayout_spi_controller_ecc;
-
-#endif
-
-#ifndef FLASH_TABLE_OPEN
+/* ===== SPI NAND Controller ECC ooblayout (defined in mtk-snand-ids.c) ===== */
 
 static SPI_NAND_EXTEND_DEVICE_ID_STATUS_T check_extend_dev_id (struct SPI_NAND_FLASH_INFO_T *ptr_rtn_device_t, u32 index)
 {
@@ -2178,14 +69,15 @@ static SPI_NAND_EXTEND_DEVICE_ID_STATUS_T check_extend_dev_id (struct SPI_NAND_F
 	return result;
 }
 
-#if defined(TCSUPPORT_BL2_OPTIMIZATION) && defined(IMAGE_BL2)
-
-SPI_NAND_FLASH_RTN_T get_spi_nand_from_mem(struct SPI_NAND_FLASH_INFO_T *ptr_rtn_device_t)
+SPI_NAND_FLASH_RTN_T get_spi_nand_from_mem(struct SPI_NAND_FLASH_INFO_T *ptr_rtn_device_t, u8 read_method)
 {
 
 	int i = 0;
 	int len = 0;
 	int index = 0;
+	int have_match = 0;
+	int best_len = -1;
+	struct SPI_NAND_FLASH_INFO_T best;
 	unsigned char * currentP = (unsigned char *)ECNT_FLASH_TABLE_BASE;
 
 	struct bl2_flash_H flash_h;
@@ -2237,24 +129,46 @@ SPI_NAND_FLASH_RTN_T get_spi_nand_from_mem(struct SPI_NAND_FLASH_INFO_T *ptr_rtn
 
 		memcpy(&spi_nand_flash_tables[0].extend_dev_id, currentP, sizeof(spi_nand_flash_tables[0].extend_dev_id));
 		currentP+=sizeof(spi_nand_flash_tables[0].extend_dev_id);
+		memcpy(&spi_nand_flash_tables[0].read_method, currentP, sizeof(spi_nand_flash_tables[0].read_method));
+		currentP+=sizeof(spi_nand_flash_tables[0].read_method);
+		memcpy(&spi_nand_flash_tables[0].oob_layout, currentP, sizeof(spi_nand_flash_tables[0].oob_layout));
+		currentP+=sizeof(spi_nand_flash_tables[0].oob_layout);
 
-		if (((ptr_rtn_device_t->mfr_id == spi_nand_flash_tables[0].mfr_id) && (ptr_rtn_device_t->dev_id == spi_nand_flash_tables[0].dev_id) && 
-			(check_extend_dev_id(ptr_rtn_device_t, 0) == SPI_NAND_EXTEND_DEVICE_ID_MATCH)))
+		if (((ptr_rtn_device_t->mfr_id == spi_nand_flash_tables[0].mfr_id) &&
+		     (ptr_rtn_device_t->dev_id == spi_nand_flash_tables[0].dev_id) &&
+		     (check_extend_dev_id(ptr_rtn_device_t, 0) == SPI_NAND_EXTEND_DEVICE_ID_MATCH) &&
+		     ((spi_nand_flash_tables[0].read_method == SPI_NAND_READ_METHOD_ANY) ||
+		      (spi_nand_flash_tables[0].read_method == read_method))))
 		{
-			index = i;
-			/* skip scanning the rest table*/
-			currentP = (unsigned char *)(ECNT_FLASH_TABLE_BASE + flash_h.flash_name_off);
+			int elen = spi_nand_flash_tables[0].extend_dev_id.extend_len;
 
-			break;
+			/*
+			 * Prefer the most specific entry: a longer ID wins over
+			 * a shorter prefix, and a method specific entry wins
+			 * over a method agnostic one at the same length.
+			 */
+			if (!have_match || elen > best_len ||
+			    (elen == best_len &&
+			     best.read_method == SPI_NAND_READ_METHOD_ANY)) {
+				best = spi_nand_flash_tables[0];
+				best_len = elen;
+				index = i;
+				have_match = 1;
+			}
 		}
 
 	}
+
+	if (have_match)
+		spi_nand_flash_tables[0] = best;
+
+	currentP = (unsigned char *)(ECNT_FLASH_TABLE_BASE + flash_h.flash_name_off);
 
 	for (i = 0; i < flash_h.flash_entry; i++)
 	{
 		memcpy(&len, currentP, sizeof(int));
 		currentP+=sizeof(int);
-	
+
 		if(i == index)
 		{
 			/* assign pointer to ptr_name.*/
@@ -2267,39 +181,37 @@ SPI_NAND_FLASH_RTN_T get_spi_nand_from_mem(struct SPI_NAND_FLASH_INFO_T *ptr_rtn
 
 	}
 
-	for (i = 0; i < flash_h.flash_entry; i++)
 	{
-		if(i == index)
-		{
-			spi_nand_flash_tables[0].oob_free_layout = (struct spi_nand_flash_ooblayout *)currentP;
-			break;
-		}
-		currentP+=sizeof(struct spi_nand_flash_ooblayout);
+		u8 id = spi_nand_flash_tables[0].oob_layout;
+		u8 idx = *((u8 *)(ECNT_FLASH_TABLE_BASE +
+				  flash_h.flash_oob_map_off + id));
 
-
+		if (idx >= flash_h.flash_oob_count)
+			idx = 0;
+		spi_nand_flash_tables[0].oob_free_layout =
+			(struct spi_nand_flash_ooblayout *)(ECNT_FLASH_TABLE_BASE +
+				flash_h.flash_oob_off +
+				idx * sizeof(struct spi_nand_flash_ooblayout));
 	}
 
 	return SPI_NAND_FLASH_RTN_NO_ERROR;
 }
 
-#endif
-
-SPI_NAND_FLASH_RTN_T scan_spi_nand_table(struct SPI_NAND_FLASH_INFO_T *ptr_rtn_device_t)
+SPI_NAND_FLASH_RTN_T scan_spi_nand_table(struct SPI_NAND_FLASH_INFO_T *ptr_rtn_device_t,
+					 u8 read_method)
 {
 	u32 i = 0;
 	SPI_NAND_FLASH_RTN_T rtn_status = SPI_NAND_FLASH_RTN_PROBE_ERROR;
 
-#if defined(TCSUPPORT_BL2_OPTIMIZATION) && defined(IMAGE_BL2)
-	get_spi_nand_from_mem(ptr_rtn_device_t);
-	
+	get_spi_nand_from_mem(ptr_rtn_device_t, read_method);
+
 	for (i = 0; i < 1; i++)
-#else
-	for (i = 0; i < (sizeof(spi_nand_flash_tables) / sizeof(spi_nand_flash_tables[0])) ; i++) 
-#endif
 	{
 		if ( ( (ptr_rtn_device_t->mfr_id) == spi_nand_flash_tables[i].mfr_id) &&
 		     ( (ptr_rtn_device_t->dev_id) == spi_nand_flash_tables[i].dev_id) &&
-		     (check_extend_dev_id(ptr_rtn_device_t, i) == SPI_NAND_EXTEND_DEVICE_ID_MATCH) ) 
+		     (check_extend_dev_id(ptr_rtn_device_t, i) == SPI_NAND_EXTEND_DEVICE_ID_MATCH) &&
+		     ((spi_nand_flash_tables[i].read_method == SPI_NAND_READ_METHOD_ANY) ||
+		      (spi_nand_flash_tables[i].read_method == read_method)) )
 		{
 			ptr_rtn_device_t->device_size 			= spi_nand_flash_tables[i].device_size;
 			ptr_rtn_device_t->erase_size  			= spi_nand_flash_tables[i].erase_size;
@@ -2323,6 +235,8 @@ SPI_NAND_FLASH_RTN_T scan_spi_nand_table(struct SPI_NAND_FLASH_INFO_T *ptr_rtn_d
 			memcpy( &(ptr_rtn_device_t->ecc_en) , &(spi_nand_flash_tables[i].ecc_en), sizeof(struct SPI_NAND_ECC_EN_INFO_T));
 			memcpy( &(ptr_rtn_device_t->extend_dev_id) , &(spi_nand_flash_tables[i].extend_dev_id), sizeof(struct SPI_NAND_EXTEND_ID_T));
 			memcpy( &(ptr_rtn_device_t->read_ecc_ceck) , &(spi_nand_flash_tables[i].read_ecc_ceck), sizeof(struct SPI_NAND_READ_ECC_CHECK_T));
+			ptr_rtn_device_t->read_method = spi_nand_flash_tables[i].read_method;
+			ptr_rtn_device_t->oob_layout = spi_nand_flash_tables[i].oob_layout;
 
 			rtn_status = SPI_NAND_FLASH_RTN_NO_ERROR;
 			break;
@@ -2331,13 +245,319 @@ SPI_NAND_FLASH_RTN_T scan_spi_nand_table(struct SPI_NAND_FLASH_INFO_T *ptr_rtn_d
 
 	return rtn_status;
 }
-#else
+
+#else /* !(TCSUPPORT_BL2_OPTIMIZATION && IMAGE_BL2 && !FLASH_TABLE_OPEN) */
+
+/*======================================================================================
+ * OOB free layouts
+ *
+ * These describe the user-visible free area of the spare region.  Each chip
+ * names one of them explicitly in mtk-snand-ids.c (SNAND_INFO's sixth
+ * argument); snand_oob_layout_by_id() maps that index to a definition here.
+ * There is no vendor/geometry guess at runtime any more.
+ *======================================================================================*/
+
+
+/*======================================================================================
+ * Conversion from the upstream descriptor to the ecnt runtime descriptor
+ *======================================================================================*/
+
+
+/*
+ * ECC status layout carried by the chip table (enum snand_ecc_status).
+ *
+ * The value is derived from U-Boot's per-family *_ecc_get_status(); U-Boot
+ * enables on-die ECC for every chip through CFG_ECC_ENABLE (0xB0 bit 4), so
+ * only the status decode differs between families.
+ */
+static void ecnt_ecc_status_info(u8 status,
+				 struct SPI_NAND_ECC_FAIL_CHECK_INFO_T *e)
+{
+	switch (status) {
+	case SNAND_ECC_70_70:
+		e->ecc_check_mask = 0x70;
+		e->ecc_uncorrected_value = 0x70;
+		break;
+	case SNAND_ECC_70_20:
+		e->ecc_check_mask = 0x70;
+		e->ecc_uncorrected_value = 0x20;
+		break;
+	case SNAND_ECC_3C_20:
+		e->ecc_check_mask = 0x3c;
+		e->ecc_uncorrected_value = 0x20;
+		break;
+	case SNAND_ECC_30_30:
+		e->ecc_check_mask = 0x30;
+		e->ecc_uncorrected_value = 0x30;
+		break;
+	case SNAND_ECC_30_20:
+	default:
+		e->ecc_check_mask = 0x30;
+		e->ecc_uncorrected_value = 0x20;
+		break;
+	}
+}
+
+static void ecnt_info_from_mtk(const struct snand_flash_info *f,
+			       struct SPI_NAND_FLASH_INFO_T *d)
+{
+	const struct snand_mem_org *m = &f->memorg;
+	u32 caps_rd = f->cap_rd ? f->cap_rd->caps : 0;
+
+	/*
+	 * Only clear the fields that may be partially filled.  Clearing the
+	 * whole descriptor would also drop fields managed by the probe or by
+	 * SPI_NAND_Flash_Set_Flash_Info().
+	 */
+	memset(&d->extend_dev_id, 0, sizeof(d->extend_dev_id));
+	memset(&d->read_ecc_ceck, 0, sizeof(d->read_ecc_ceck));
+
+	d->mfr_id = f->id.id[0];
+	d->dev_id = f->id.id[1];
+	d->read_method = f->id.type;
+	d->ptr_name = (const u8 *)f->model;
+
+	d->page_size = m->pagesize;
+	d->oob_size = m->sparesize;
+	d->erase_size = (u32)m->pagesize * m->pages_per_block;
+	d->die_num = m->ndies ? m->ndies : 1;
+	/*
+	 * blocks_per_die already covers every plane of a die; planes_per_die
+	 * is only a subdivision (selected through the column address) and must
+	 * not multiply the total capacity.
+	 */
+	d->device_size = d->erase_size * m->blocks_per_die * d->die_num;
+
+	/* Extended device ID bytes after the 2-byte vendor/device ID. */
+	if (f->id.len > 2) {
+		u8 n = f->id.len - 2;
+		u8 i;
+
+		if (n > MAX_SPI_NAND_FLASH_EXTEND_DEV_ID_LEN)
+			n = MAX_SPI_NAND_FLASH_EXTEND_DEV_ID_LEN;
+
+		d->extend_dev_id.extend_len = n;
+		for (i = 0; i < n; i++)
+			d->extend_dev_id.extend_id[i] = f->id.id[2 + i];
+	}
+
+	/*
+	 * Bus modes.  The ecnt controller/board is only validated for dual
+	 * read and single program: the previous hand-written table used
+	 * DUAL/SINGLE for every one of its chips and never enabled quad.
+	 * Sending quad read (0x6b) here makes the whole page read garbage on
+	 * boards that do not wire IO2/IO3, which is what broke UBI
+	 * ("Bad EC magic in block ...").  Keep this rule global; do not add
+	 * per-chip overrides.
+	 */
+	if ((f->flags & SNAND_FLAG_QUAD_ENABLE) &&
+	    (caps_rd & (SPI_IO_1_1_4 | SPI_IO_1_4_4)))
+		d->read_mode = SPI_NAND_FLASH_READ_SPEED_MODE_QUAD;
+	else if (caps_rd & (SPI_IO_1_1_2 | SPI_IO_1_2_2))
+		d->read_mode = SPI_NAND_FLASH_READ_SPEED_MODE_DUAL;
+	else
+		d->read_mode = SPI_NAND_FLASH_READ_SPEED_MODE_SINGLE;
+
+	d->write_mode = SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE;
+
+	/* Upstream read commands put the dummy byte after the address. */
+	d->dummy_mode = SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND;
+
+	/*
+	 * Plane/die selection is a table property: the table carries
+	 * SNAND_FLAG_PLANE_SELECT and enum snand_die_select, so the driver no
+	 * longer guesses from the vendor ID.
+	 */
+	d->feature = SPI_NAND_FLASH_FEATURE_NONE;
+	if (f->flags & SNAND_FLAG_PLANE_SELECT)
+		d->feature |= SPI_NAND_FLASH_PLANE_SELECT_HAVE;
+	if (f->die_select == SNAND_DIE_SELECT_2)
+		d->feature |= SPI_NAND_FLASH_DIE_SELECT_2_HAVE;
+	else if (f->die_select == SNAND_DIE_SELECT_1)
+		d->feature |= SPI_NAND_FLASH_DIE_SELECT_1_HAVE;
+
+	/* Functional feature bits carried one-to-one by the chip table. */
+	if (f->flags & SNAND_FLAG_NO_ECC_STATUS)
+		d->feature |= SPI_NAND_FLASH_NO_ECC_STATUS_HAVE;
+	if (f->flags & SNAND_FLAG_DISABLE_CONT_RD)
+		d->feature |= SPI_NAND_FLASH_DISABLE_CONTINUOUS_RD;
+	if (f->flags & SNAND_FLAG_ERASE_STATS)
+		d->feature |= SPI_NAND_FLASH_ERASE_STATISTICS;
+	if (f->flags & SNAND_FLAG_BLANK_PAGE_FIXUP)
+		d->feature |= SPI_NAND_FLASH_BLANK_PAGE_FIXUP;
+	if (f->flags & SNAND_FLAG_OOB_RESERVE_BMT)
+		d->feature |= SPI_NAND_FLASH_OOB_RESERVE_FOR_BMT;
+	if (f->flags & SNAND_FLAG_READ_ECC_ERR_CHECK)
+		d->feature |= SPI_NAND_FLASH_READ_ECC_ERROR_BIT_CHECK;
+	if (f->flags & SNAND_FLAG_WINBOND_BLANK_PARITY)
+		d->feature |= SPI_NAND_FLASH_WINBOND_BLANK_PARITY;
+
+	/*
+	 * Prefer the layout carried by the chip table; only fall back to the
+	 * vendor/geometry heuristic when the table entry has no layout.
+	 */
+	d->oob_layout = f->oob_layout;
+	d->oob_free_layout = NULL;
+	if (f->oob_layout)
+		d->oob_free_layout = snand_oob_layout_by_id(f->oob_layout);
+	if (!d->oob_free_layout)
+		d->oob_free_layout = &ooblayout_spi_controller_ecc;
+
+	/*
+	 * Defaults for the fields the upstream table does not carry.
+	 *
+	 * Do not write registers with guessed values during boot:
+	 *  - unlock_block_info is applied by spi_nand_manufacute_init() to the
+	 *    protection register (0xA0) on every probe.  Reads do not need it
+	 *    and a wrong mask can touch a reserved/other-function bit, so leave
+	 *    it disabled unless a table entry provides it.
+	 *  - quad_en is only consumed by enable_quad(), which runs only for a
+	 *    QUAD read/write mode; this port is fixed to DUAL/SINGLE, so the QE
+	 *    write is never reached.  Keep the mask at zero instead of a guess.
+	 */
+	const struct snand_quirks *q = snand_quirk_get(f->quirks);
+
+	ecnt_ecc_status_info(f->ecc_status, &d->ecc_fail_check_info);
+
+	/* ECC enable register: default 0xB0/0x10/0x10. */
+	d->ecc_en.ecc_en_addr = _SPI_NAND_ADDR_FEATURE;
+	d->ecc_en.ecc_en_mask = 0x10;
+	d->ecc_en.ecc_en_value = 0x10;
+	if (q->ecc_en == 1) {
+		d->ecc_en.ecc_en_addr = 0x90;
+	} else if (q->ecc_en == 2) {
+		d->ecc_en.ecc_en_mask = 0x00;
+		d->ecc_en.ecc_en_value = 0x00;
+	}
+
+	/* Block protection unlock values from the pre-migration table. */
+	d->unlock_block_info.unlock_block_mask = 0x38;
+	d->unlock_block_info.unlock_block_value = 0x00;
+	switch (q->unlock) {
+	case 1:
+		d->unlock_block_info.unlock_block_mask = 0x7C;
+		break;
+	case 2:
+		d->unlock_block_info.unlock_block_mask = 0xFB;
+		break;
+	case 3:
+		d->unlock_block_info.unlock_block_mask = 0x78;
+		break;
+	case 4:
+		d->unlock_block_info.unlock_block_mask = 0x7A;
+		d->unlock_block_info.unlock_block_value = 0x02;
+		break;
+	}
+
+	d->quad_en.quad_en_mask = 0x00;
+	d->quad_en.quad_en_value = 0x00;
+	/* Table hook for a board that actually routes IO2/IO3. */
+	if (f->flags & SNAND_FLAG_QUAD_ENABLE) {
+		d->quad_en.quad_en_mask = 0x01;
+		d->quad_en.quad_en_value = 0x01;
+	}
+
+	d->otp_page_num = -1;
+	d->soc_ecc_ability = q->soc_ecc ? q->soc_ecc : 12;
+
+	/* Read ECC threshold check (runtime only; 0 = disabled). */
+	{
+		static const struct SPI_NAND_READ_ECC_CHECK_T ecnt_read_ecc[] = {
+			[0] = { 0, { 0x00, 0x00, 0x00 }, { 0x00, 0x00, 0x00 } },
+			[1] = { 1, { 0x30, 0x00, 0x00 }, { 0x10, 0x60, 0x00 } },
+			[2] = { 2, { 0x50, 0x00, 0x00 }, { 0x00, 0x00, 0x00 } },
+			[3] = { 3, { 0x30, 0x10, 0x00 }, { 0xF0, 0x20, 0x30 } },
+			[4] = { 1, { 0x30, 0x00, 0x00 }, { 0x10, 0x30, 0x00 } },
+		};
+		u8 re = q->read_ecc <= 4 ? q->read_ecc : 0;
+
+		d->read_ecc_ceck = ecnt_read_ecc[re];
+	}
+
+	/*
+	 * Write-enable ordering is a per-chip property carried by the table.
+	 */
+	if (f->flags & SNAND_FLAG_LOAD_FIRST)
+		d->write_en_type = SPI_NAND_FLASH_WRITE_LOAD_FIRST;
+	else
+		d->write_en_type = SPI_NAND_FLASH_WRITE_EN_FIRST;
+}
+
+#ifndef FLASH_TABLE_OPEN
+static void ecnt_consider(const struct snand_flash_info *f, const u8 *buf,
+			  u8 method, const struct snand_flash_info **best)
+{
+	if (!f)
+		return;
+	if (f->id.id[0] != buf[0] || f->id.id[1] != buf[1])
+		return;
+	if (f->id.len > 2 && f->id.id[2] != buf[2])
+		return;
+	if (f->id.len > 3 && f->id.id[3] != buf[3])
+		return;
+	/* A method-specific entry only matches its own read sequence. */
+	if (f->id.type != SNAND_ID_ANY && f->id.type != method)
+		return;
+
+	if (!*best ||
+	    f->id.len > (*best)->id.len ||
+	    (f->id.len == (*best)->id.len && (*best)->id.type == SNAND_ID_ANY))
+		*best = f;
+}
+
+/*
+ * Find the chip descriptor for the ID reported by the chip.  The upstream
+ * MediaTek table is searched first-class together with the U-Boot supplement;
+ * a longer (more specific) ID wins over a shorter prefix, and a method
+ * specific entry wins over a method agnostic one.
+ */
+static const struct snand_flash_info *ecnt_snand_lookup(
+				const struct SPI_NAND_FLASH_INFO_T *id,
+				u8 method)
+{
+	const struct snand_flash_info *best = NULL;
+	u8 buf[SNAND_MAX_ID_LEN] = { 0, 0, 0, 0 };
+	u32 i;
+
+	buf[0] = id->mfr_id;
+	buf[1] = id->dev_id;
+	/*
+	 * The probe always reads MAX_SPI_NAND_FLASH_EXTEND_DEV_ID_LEN bytes
+	 * into extend_id[].  extend_len is a table-side field and is never
+	 * filled by the probe, so it must not gate the copy (otherwise every
+	 * 3-byte upstream ID would be skipped here).
+	 */
+	for (i = 0; i < MAX_SPI_NAND_FLASH_EXTEND_DEV_ID_LEN && i < 2; i++)
+		buf[2 + i] = id->extend_dev_id.extend_id[i];
+
+	for (i = 0; i < snand_flash_id_count(); i++)
+		ecnt_consider(snand_flash_id_index(i), buf, method, &best);
+
+	return best;
+}
+#endif /* !FLASH_TABLE_OPEN */
+
+#ifdef FLASH_TABLE_OPEN
+
+/*======================================================================================
+ * Host-side flash_table.bin generator
+ *======================================================================================*/
 
 #include <stdio.h>
 #include <stdlib.h>
 
+#define SPI_NAND_TABLE_MAX	512
+
+static struct SPI_NAND_FLASH_INFO_T gen_flash_tables[SPI_NAND_TABLE_MAX];
+/*
+ * The header also declares "extern const ... spi_nand_flash_tables[]" for the
+ * non-BL2 build, so keep the serialization code below unchanged by mapping the
+ * name onto the generator-local array.
+ */
+#define spi_nand_flash_tables gen_flash_tables
+
 int main(void){
-	int num=sizeof(spi_nand_flash_tables) / sizeof(spi_nand_flash_tables[0]);
+	int num;
 	int i;
 	FILE *fp;
 	int name_len = 0;
@@ -2345,6 +565,50 @@ int main(void){
 	int buf_size = 1000000; //16M
 	struct bl2_flash_H flash_h;
 	char *buf = NULL;
+	unsigned char oob_map[256] = { 0 };
+	unsigned int oob_count = 1;
+	struct spi_nand_flash_ooblayout *oob_pool = NULL;
+
+	num = (int)snand_flash_id_count();
+	if (num > SPI_NAND_TABLE_MAX) {
+		printf("too many spi nand entries: %d\n", num);
+		return -1;
+	}
+
+	for (i = 0; i < num; i++)
+		ecnt_info_from_mtk(snand_flash_id_index(i), &spi_nand_flash_tables[i]);
+
+	/*
+	 * Build the deduplicated OOB layout pool.  Pool index 0 is the
+	 * controller-ECC layout, the fallback for entries with oob_layout 0.
+	 */
+	oob_pool = malloc(256 * sizeof(*oob_pool));
+	if (!oob_pool) {
+		printf("oob pool malloc failed\n");
+		return -1;
+	}
+	{
+		struct spi_nand_flash_ooblayout *ctl = snand_oob_layout_by_id(255);
+
+		if (ctl)
+			memcpy(&oob_pool[0], ctl, sizeof(*oob_pool));
+		else
+			memset(&oob_pool[0], 0, sizeof(*oob_pool));
+	}
+	for (i = 0; i < num; i++) {
+		u8 id = spi_nand_flash_tables[i].oob_layout;
+
+		if (id == 0 || oob_map[id])
+			continue;
+		if (spi_nand_flash_tables[i].oob_free_layout && oob_count < 255) {
+			oob_map[id] = (unsigned char)oob_count;
+			memcpy(&oob_pool[oob_count],
+			       spi_nand_flash_tables[i].oob_free_layout,
+			       sizeof(*oob_pool));
+			oob_count++;
+		}
+	}
+
 	fp = fopen("flash_table.bin","w+");
 	if(fp == NULL){
 		printf("open flash_table.bin fail!!\r\n");
@@ -2357,6 +621,7 @@ int main(void){
 		return -1;
 	}
 
+	memset(&flash_h, 0, sizeof(flash_h));
 	flash_h.flash_entry = num;
 
 	total_size += sizeof(struct bl2_flash_H);
@@ -2388,7 +653,7 @@ int main(void){
 		total_size +=sizeof(spi_nand_flash_tables[i].read_mode);
 		memcpy((buf+total_size), &spi_nand_flash_tables[i].die_num, sizeof(spi_nand_flash_tables[i].die_num));
 		total_size +=sizeof(spi_nand_flash_tables[i].die_num);
-		
+
 		memcpy((buf+total_size), &spi_nand_flash_tables[i].write_mode, sizeof(spi_nand_flash_tables[i].write_mode));
 		total_size +=sizeof(spi_nand_flash_tables[i].write_mode);
 
@@ -2403,7 +668,7 @@ int main(void){
 
 		memcpy((buf+total_size), &spi_nand_flash_tables[i].unlock_block_info, sizeof(spi_nand_flash_tables[i].unlock_block_info));
 		total_size +=sizeof(spi_nand_flash_tables[i].unlock_block_info);
-		
+
 		memcpy((buf+total_size), &spi_nand_flash_tables[i].quad_en, sizeof(spi_nand_flash_tables[i].quad_en));
 		total_size +=sizeof(spi_nand_flash_tables[i].quad_en);
 
@@ -2421,12 +686,18 @@ int main(void){
 
 		memcpy((buf+total_size), &spi_nand_flash_tables[i].extend_dev_id, sizeof(spi_nand_flash_tables[i].extend_dev_id));
 		total_size +=sizeof(spi_nand_flash_tables[i].extend_dev_id);
+
+		memcpy((buf+total_size), &spi_nand_flash_tables[i].read_method, sizeof(spi_nand_flash_tables[i].read_method));
+		total_size +=sizeof(spi_nand_flash_tables[i].read_method);
+
+		memcpy((buf+total_size), &spi_nand_flash_tables[i].oob_layout, sizeof(spi_nand_flash_tables[i].oob_layout));
+		total_size +=sizeof(spi_nand_flash_tables[i].oob_layout);
 	}
 
 	flash_h.flash_name_off = total_size;
 
 	for(i=0; i<num; i++){
-		name_len = strlen(spi_nand_flash_tables[i].ptr_name);
+		name_len = strlen((const char *)spi_nand_flash_tables[i].ptr_name);
 		name_len++;
 		memcpy((buf+total_size), &name_len, 4);
 
@@ -2439,12 +710,14 @@ int main(void){
 		memcpy((buf+total_size), &total_size, 4-(total_size %4));
 		total_size += (4-(total_size %4));
 	}
+	flash_h.flash_oob_map_off = total_size;
+	memcpy((buf+total_size), oob_map, sizeof(oob_map));
+	total_size += sizeof(oob_map);
+
 	flash_h.flash_oob_off = total_size;
-	
-	for(i=0; i<num; i++){
-		memcpy((buf+total_size), spi_nand_flash_tables[i].oob_free_layout, sizeof(struct spi_nand_flash_ooblayout));
-		total_size += sizeof(struct spi_nand_flash_ooblayout);
-	}
+	flash_h.flash_oob_count = oob_count;
+	memcpy((buf+total_size), oob_pool, oob_count * sizeof(*oob_pool));
+	total_size += oob_count * sizeof(*oob_pool);
 
 	memcpy(buf, &flash_h, sizeof(struct bl2_flash_H));
 
@@ -2456,5 +729,27 @@ int main(void){
 	return 0;
 }
 
-#endif
+#else /* !FLASH_TABLE_OPEN */
+
+/*======================================================================================
+ * Normal runtime lookup
+ *======================================================================================*/
+
+SPI_NAND_FLASH_RTN_T scan_spi_nand_table(struct SPI_NAND_FLASH_INFO_T *ptr_rtn_device_t,
+					 u8 read_method)
+{
+	const struct snand_flash_info *f;
+
+	f = ecnt_snand_lookup(ptr_rtn_device_t, read_method);
+	if (!f)
+		return SPI_NAND_FLASH_RTN_PROBE_ERROR;
+
+	ecnt_info_from_mtk(f, ptr_rtn_device_t);
+
+	return SPI_NAND_FLASH_RTN_NO_ERROR;
+}
+
+#endif /* FLASH_TABLE_OPEN */
+
+#endif /* BL2 optimized runtime */
 /* End of [spi_nand_flash_table.c] package */

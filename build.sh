@@ -356,6 +356,7 @@ build_spi_nand_flash_table() {
     rm -f "${SPI_NAND_FLASH_TABLE}"
 
     local SRC="${ATF_DIR}/plat/ecnt/common/drivers/flash/spi_nand_flash_table.c"
+    local IDS_SRC="${ATF_DIR}/plat/ecnt/common/drivers/flash/mtk-snand-ids.c"
     local INC="${ATF_DIR}/plat/ecnt/en7523/include"
 
     # TCSUPPORT_PARALLEL_NAND adds fields to struct SPI_NAND_FLASH_INFO_T, so the
@@ -367,7 +368,7 @@ build_spi_nand_flash_table() {
         ${PARALLEL_NAND_CFLAGS} \
         -I"${INC}" \
         -o "${SPI_NAND_FLASH_TABLE}" \
-        "${SRC}"
+        "${SRC}" "${IDS_SRC}"
 
     if [ ! -f "${SPI_NAND_FLASH_TABLE}" ]; then
         error "spi_nand_flash_table Compile failed: ${SPI_NAND_FLASH_TABLE} not generated"

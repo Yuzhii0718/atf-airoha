@@ -86,7 +86,19 @@
 #define SPI_NAND_CONTROLLER_ECC_INFO_SRAM_ADDR_INFO		(CACHE_ADDR_INFO_START_ADDR + 0x00)
 #define SPI_NAND_CONTROLLER_ECC_INFO_FLASH_ADDR_INFO	(0x28)
 
-#define MAX_SPI_NAND_FLASH_EXTEND_DEV_ID_LEN			(1)
+#define MAX_SPI_NAND_FLASH_EXTEND_DEV_ID_LEN			(2)
+
+/*
+ * READ ID method, mirroring enum snand_id_type in the chip table and U-Boot's
+ * SPINAND_READID_METHOD_*.  Chips that share an ID but need a different
+ * sequence are told apart by this value.
+ */
+enum {
+	SPI_NAND_READ_METHOD_OPCODE = 0,
+	SPI_NAND_READ_METHOD_ADDR,
+	SPI_NAND_READ_METHOD_DUMMY,
+	SPI_NAND_READ_METHOD_ANY,
+};
 #define _SPI_NAND_DUMMY_EXTEND_DEVICE_ID				{0, {0x0, 0x0, 0x0}}
 
 /* SPI NAND Size Define */
@@ -131,94 +143,6 @@
 #define _SPI_NAND_MANUFACTURER_ID_SAMSUNG		0xEC
 #define _SPI_NAND_MANUFACTURER_ID_SKYHIGH		0x01
 
-/* SPI NAND Device ID */
-#define _SPI_NAND_DEVICE_ID_GD5E1GQ4UBYIG	0x11
-#define _SPI_NAND_DEVICE_ID_GD5F1GQ4UAYIG	0xF1
-#define _SPI_NAND_DEVICE_ID_GD5F1GQ4UBYIG	0xD1
-#define _SPI_NAND_DEVICE_ID_GD5F1GQ4UCYIG	0xB1
-#define _SPI_NAND_DEVICE_ID_GD5F2GM7UEYIG	0x92
-#define _SPI_NAND_DEVICE_ID_GD5F2GQ4UBYIG	0xD2
-#define _SPI_NAND_DEVICE_ID_GD5F2GQ4UE9IS	0xD5
-#define _SPI_NAND_DEVICE_ID_GD5F2GQ4UCYIG	0xB2
-#define _SPI_NAND_DEVICE_ID_GD5F4GQ4UBYIG	0xD4
-#define _SPI_NAND_DEVICE_ID_GD5F4GQ4UCYIG	0xB4
-#define _SPI_NAND_DEVICE_ID_F50L512M41A		0x20
-#define _SPI_NAND_DEVICE_ID_F50L1G41A0		0x21
-#define _SPI_NAND_DEVICE_ID_F50L1G41LB		0x01
-#define _SPI_NAND_DEVICE_ID_F50L2G41LB		0x0A
-#define _SPI_NAND_DEVICE_ID_W25N01GV		0xAA
-#define _SPI_NAND_DEVICE_ID_W25N01GV_EXTEND	{1, {0x21, 0, 0}}
-#define _SPI_NAND_DEVICE_ID_W25N01KV		0xAE
-#define _SPI_NAND_DEVICE_ID_W25N01KV_EXTEND	{1, {0x21, 0, 0}}
-#define _SPI_NAND_DEVICE_ID_W25N02KV		0xAA
-#define _SPI_NAND_DEVICE_ID_W25N02KV_EXTEND	{1, {0x22, 0, 0}}
-#define _SPI_NAND_DEVICE_ID_W25N04KV		0xAA
-#define _SPI_NAND_DEVICE_ID_W25N04KV_EXTEND	{1, {0x23, 0, 0}}
-#define _SPI_NAND_DEVICE_ID_W25M02GV		0xAB
-#define _SPI_NAND_DEVICE_ID_W25N02GV_EXTEND	{1, {0x21, 0, 0}}
-#define _SPI_NAND_DEVICE_ID_MXIC35LF1GE4AB	0x12
-#define _SPI_NAND_DEVICE_ID_MXIC35LF2GE4AB	0x22
-#define _SPI_NAND_DEVICE_ID_MXIC35LF2GE4AD  0x26
-#define _SPI_NAND_DEVICE_ID_MXIC35LF4GE4AD  0x37
-#define _SPI_NAND_DEVICE_ID_MXIC35LF2G14AC	0x20
-#define _SPI_NAND_DEVICE_ID_MXIC35LF4GE4AB	0x32
-#define _SPI_NAND_DEVICE_ID_MXIC35LF1G24AD	0x14
-#define _SPI_NAND_DEVICE_ID_A5U12A21ASC		0x20
-#define _SPI_NAND_DEVICE_ID_A5U1GA21BWS		0x21
-#define _SPI_NAND_DEVICE_ID_EM73C044SNA		0x19
-#define _SPI_NAND_DEVICE_ID_EM73C044SNB		0x11
-#define _SPI_NAND_DEVICE_ID_EM73C044SND		0x1D
-#define _SPI_NAND_DEVICE_ID_EM73C044SNF		0x09
-#define _SPI_NAND_DEVICE_ID_EM73C044VCA		0x18
-#define _SPI_NAND_DEVICE_ID_EM73C044VCD		0x1C
-#define _SPI_NAND_DEVICE_ID_EM73D044SNA		0x12
-#define _SPI_NAND_DEVICE_ID_EM73D044SNC		0x0A
-#define _SPI_NAND_DEVICE_ID_EM73D044SND		0x1E
-#define _SPI_NAND_DEVICE_ID_EM73D044SNF		0x10
-#define _SPI_NAND_DEVICE_ID_EM73D044VCA		0x13
-#define _SPI_NAND_DEVICE_ID_EM73D044VCB		0x14
-#define _SPI_NAND_DEVICE_ID_EM73D044VCD		0x17
-#define _SPI_NAND_DEVICE_ID_EM73D044VCG		0x1F
-#define _SPI_NAND_DEVICE_ID_EM73D044VCH		0x1B
-#define _SPI_NAND_DEVICE_ID_EM73E044SNA		0x03
-#define _SPI_NAND_DEVICE_ID_EM73E044VCA		0x2C
-#define _SPI_NAND_DEVICE_ID_EM73E044VCB		0x2F
-#define _SPI_NAND_DEVICE_ID_EM73F044SNA		0x24
-#define _SPI_NAND_DEVICE_ID_TC58CVG0S3H		0xC2
-#define _SPI_NAND_DEVICE_ID_TC58CVG1S3H		0xCB
-#define _SPI_NAND_DEVICE_ID_TC58CVG2S0H		0xCD
-#define _SPI_NAND_DEVICE_ID_TC58CVG2S0HRAIJ	0xED
-#define _SPI_NAND_DEVICE_ID_MT29F1G01		0x14
-#define _SPI_NAND_DEVICE_ID_MT29F2G01		0x24
-#define _SPI_NAND_DEVICE_ID_MT29F4G01AD		0x34
-#define _SPI_NAND_DEVICE_ID_MT29F4G01		0x36
-#define _SPI_NAND_DEVICE_ID_MT29F4G01_33V	0x34
-
-#define _SPI_NAND_DEVICE_ID_HYF1GQ4UAACAE	0x51
-#define _SPI_NAND_DEVICE_ID_HYF2GQ4UAACAE	0x52
-#define _SPI_NAND_DEVICE_ID_HYF2GQ4UHCCAE	0x5A
-#define _SPI_NAND_DEVICE_ID_HYF4GQ4UAACBE	0xD4
-#define _SPI_NAND_DEVICE_ID_HYF1GQ4UDACAE	0x21
-#define _SPI_NAND_DEVICE_ID_HYF2GQ4UDACAE	0x22
-#define _SPI_NAND_DEVICE_ID_PN26G01AWSIUG	0xE1
-#define _SPI_NAND_DEVICE_ID_PN26G02AWSIUG	0xE2
-#define _SPI_NAND_DEVICE_ID_ATO25D1GA		0x12
-#define _SPI_NAND_DEVICE_ID_FM25S01			0xA1
-#define _SPI_NAND_DEVICE_ID_FM25S01A		0xE4
-#define _SPI_NAND_DEVICE_ID_FM25G01B		0xD1
-#define _SPI_NAND_DEVICE_ID_FM25G02B		0xD2
-#define _SPI_NAND_DEVICE_ID_FM25G02			0xF2
-#define _SPI_NAND_DEVICE_ID_XT26G02B		0xF2
-#define _SPI_NAND_DEVICE_ID_XT26G01A		0xE1
-#define _SPI_NAND_DEVICE_ID_XT26G02A		0xE2
-#define _SPI_NAND_DEVICE_ID_PSU1GS20BN		0x21
-#define _SPI_NAND_DEVICE_ID_BWJX08U			0xB1
-#define _SPI_NAND_DEVICE_ID_BWET08U			0xB2
-#define _SPI_NAND_DEVICE_ID_FS35ND01GD1F1	0xA1
-#define _SPI_NAND_DEVICE_ID_FS35ND02GS2F1	0xA2
-#define _SPI_NAND_DEVICE_ID_FS35ND02GD1F1	0xB2
-#define _SPI_NAND_DEVICE_ID_F35SQB002G		0x52
-#define _SPI_NAND_DEVICE_ID_S35ML02G3		0x25
 
 /* SPI NAND register address of command set */
 #define _SPI_NAND_ADDR_EXTEND_BFD			0x10	/* Address of extend ECC Bit Flip count Detection*/
@@ -327,6 +251,7 @@ typedef enum{
 #define SPI_NAND_FLASH_BLANK_PAGE_FIXUP			( 0x01 << 6 )
 #define SPI_NAND_FLASH_OOB_RESERVE_FOR_BMT		( 0x01 << 7 )
 #define SPI_NAND_FLASH_READ_ECC_ERROR_BIT_CHECK	( 0x01 << 8 )
+#define SPI_NAND_FLASH_WINBOND_BLANK_PARITY		( 0x01 << 9 )
 
 #if defined(TCSUPPORT_PARALLEL_NAND)
 #define PARALLEL_NAND_FLASH_FEATURE_SHIFT	(16)
@@ -377,14 +302,14 @@ struct SPI_NAND_ECC_EN_INFO_T {
 };
 
 struct SPI_NAND_EXTEND_ID_T {
-	const u8	extend_len;
-	const u8	extend_id[3];
+	u8	extend_len;
+	u8	extend_id[3];
 };
 
 struct SPI_NAND_READ_ECC_CHECK_T {
-	const u8	type;
-	const u8	ecc_threhsold_value[SPI_NAND_FLASH_THRESHOLD_VALUE_MAX];
-	const u8	ext_data[SPI_NAND_FLASH_EXT_DATA_MAX];
+	u8	type;
+	u8	ecc_threhsold_value[SPI_NAND_FLASH_THRESHOLD_VALUE_MAX];
+	u8	ext_data[SPI_NAND_FLASH_EXT_DATA_MAX];
 };
 
 struct SPI_NAND_FLASH_INFO_T {
@@ -393,8 +318,8 @@ struct SPI_NAND_FLASH_INFO_T {
 	u8						dev_id;
 	const u8					*ptr_name;
 #else
-	const u8					mfr_id;
-	const u8					dev_id;
+	u8						mfr_id;
+	u8						dev_id;
 	const u8					*ptr_name;
 #endif
 	u32						device_size;	/* Flash total Size */
@@ -422,6 +347,10 @@ struct SPI_NAND_FLASH_INFO_T {
 	struct SPI_NAND_EXTEND_ID_T			extend_dev_id;
 	u8						soc_ecc_ability;
 	struct SPI_NAND_READ_ECC_CHECK_T		read_ecc_ceck;
+	/* Read-ID method this entry is valid for (enum snand_id_type). */
+	u8						read_method;
+	/* User OOB free-layout index from the chip table (0 = derived). */
+	u8						oob_layout;
 };
 
 #if defined(TCSUPPORT_BL2_OPTIMIZATION) && defined(IMAGE_BL2)
@@ -436,15 +365,17 @@ struct bl2_flash_H
 {
 	unsigned int flash_entry;
 	unsigned int flash_name_off;
-	unsigned int flash_oob_off;
+	unsigned int flash_oob_off;	/* offset of the deduplicated layout pool */
 	unsigned int parallel_entry;
 	unsigned int parallel_name_off;
 	unsigned int parallel_oob_off;
+	unsigned int flash_oob_count;	/* number of entries in the layout pool */
+	unsigned int flash_oob_map_off;	/* offset of the 256-byte id -> pool index map */
 };
 #endif
 
 
-extern SPI_NAND_FLASH_RTN_T scan_spi_nand_table(struct SPI_NAND_FLASH_INFO_T *ptr_rtn_device_t);
+extern SPI_NAND_FLASH_RTN_T scan_spi_nand_table(struct SPI_NAND_FLASH_INFO_T *ptr_rtn_device_t, u8 read_method);
 extern struct spi_nand_flash_ooblayout ooblayout_spi_controller_ecc;
 
 struct nand_info {
