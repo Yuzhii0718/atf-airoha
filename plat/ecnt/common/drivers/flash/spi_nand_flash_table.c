@@ -32,7 +32,6 @@
 #include <stdint.h>
 #include <ecnt_spi_nand_flash.h>
 
-extern struct spi_nand_flash_ooblayout *snand_oob_layout_by_id(u8 id);
 extern const struct snand_quirks *snand_quirk_get(u8 id);
 #include "mtk-snand-def.h"
 
@@ -45,6 +44,10 @@ extern const struct snand_quirks *snand_quirk_get(u8 id);
  * never references the table in the BL2 branch; --gc-sections drops the
  * unused table/layout symbols.  The runtime descriptor is deserialized from
  * flash_table.bin, which the host generator below produces from that table.
+ *
+ * The blob omits the user OOB layout pool, read_ecc_ceck and
+ * soc_ecc_ability: BL2 does not consume the first two, and soc_ecc_ability
+ * is only used by the parallel-NAND / SoC-ECC paths.
  *======================================================================================*/
 
 #include <platform_def.h>
@@ -124,15 +127,11 @@ SPI_NAND_FLASH_RTN_T get_spi_nand_from_mem(struct SPI_NAND_FLASH_INFO_T *ptr_rtn
 		memcpy(&spi_nand_flash_tables[0].otp_page_num, currentP, sizeof(spi_nand_flash_tables[0].otp_page_num));
 		currentP+=sizeof(spi_nand_flash_tables[0].otp_page_num);
 #endif
-		memcpy(&spi_nand_flash_tables[0].soc_ecc_ability, currentP, sizeof(spi_nand_flash_tables[0].soc_ecc_ability));
-		currentP+=sizeof(spi_nand_flash_tables[0].soc_ecc_ability);
 
 		memcpy(&spi_nand_flash_tables[0].extend_dev_id, currentP, sizeof(spi_nand_flash_tables[0].extend_dev_id));
 		currentP+=sizeof(spi_nand_flash_tables[0].extend_dev_id);
 		memcpy(&spi_nand_flash_tables[0].read_method, currentP, sizeof(spi_nand_flash_tables[0].read_method));
 		currentP+=sizeof(spi_nand_flash_tables[0].read_method);
-		memcpy(&spi_nand_flash_tables[0].oob_layout, currentP, sizeof(spi_nand_flash_tables[0].oob_layout));
-		currentP+=sizeof(spi_nand_flash_tables[0].oob_layout);
 
 		if (((ptr_rtn_device_t->mfr_id == spi_nand_flash_tables[0].mfr_id) &&
 		     (ptr_rtn_device_t->dev_id == spi_nand_flash_tables[0].dev_id) &&
@@ -181,18 +180,14 @@ SPI_NAND_FLASH_RTN_T get_spi_nand_from_mem(struct SPI_NAND_FLASH_INFO_T *ptr_rtn
 
 	}
 
-	{
-		u8 id = spi_nand_flash_tables[0].oob_layout;
-		u8 idx = *((u8 *)(ECNT_FLASH_TABLE_BASE +
-				  flash_h.flash_oob_map_off + id));
-
-		if (idx >= flash_h.flash_oob_count)
-			idx = 0;
-		spi_nand_flash_tables[0].oob_free_layout =
-			(struct spi_nand_flash_ooblayout *)(ECNT_FLASH_TABLE_BASE +
-				flash_h.flash_oob_off +
-				idx * sizeof(struct spi_nand_flash_ooblayout));
-	}
+	/*
+	 * BL2 never consumes the user OOB free layout: its UBI scanner uses
+	 * fixed page-size-based offsets and nandflash_read_oob() reads from
+	 * the first spare byte.  Only the ecnt Linux MTD OOB mapping (non-BL2)
+	 * uses it.  Keep the generic controller layout as a safe fallback if
+	 * some non-boot helper reads the pointer.
+	 */
+	spi_nand_flash_tables[0].oob_free_layout = &ooblayout_spi_controller_ecc;
 
 	return SPI_NAND_FLASH_RTN_NO_ERROR;
 }
@@ -223,7 +218,6 @@ SPI_NAND_FLASH_RTN_T scan_spi_nand_table(struct SPI_NAND_FLASH_INFO_T *ptr_rtn_d
 #ifdef TCSUPPORT_NAND_FLASH_OTP
 			ptr_rtn_device_t->otp_page_num			= spi_nand_flash_tables[i].otp_page_num;
 #endif
-			ptr_rtn_device_t->soc_ecc_ability			= spi_nand_flash_tables[i].soc_ecc_ability;
 			memcpy( &(ptr_rtn_device_t->ptr_name) , &(spi_nand_flash_tables[i].ptr_name), sizeof(ptr_rtn_device_t->ptr_name));
 			memcpy( &(ptr_rtn_device_t->oob_free_layout) , &(spi_nand_flash_tables[i].oob_free_layout), sizeof(ptr_rtn_device_t->oob_free_layout));
 			ptr_rtn_device_t->feature = spi_nand_flash_tables[i].feature;
@@ -234,9 +228,7 @@ SPI_NAND_FLASH_RTN_T scan_spi_nand_table(struct SPI_NAND_FLASH_INFO_T *ptr_rtn_d
 			memcpy( &(ptr_rtn_device_t->quad_en) , &(spi_nand_flash_tables[i].quad_en), sizeof(struct SPI_NAND_QUAD_EN_INFO_T));
 			memcpy( &(ptr_rtn_device_t->ecc_en) , &(spi_nand_flash_tables[i].ecc_en), sizeof(struct SPI_NAND_ECC_EN_INFO_T));
 			memcpy( &(ptr_rtn_device_t->extend_dev_id) , &(spi_nand_flash_tables[i].extend_dev_id), sizeof(struct SPI_NAND_EXTEND_ID_T));
-			memcpy( &(ptr_rtn_device_t->read_ecc_ceck) , &(spi_nand_flash_tables[i].read_ecc_ceck), sizeof(struct SPI_NAND_READ_ECC_CHECK_T));
 			ptr_rtn_device_t->read_method = spi_nand_flash_tables[i].read_method;
-			ptr_rtn_device_t->oob_layout = spi_nand_flash_tables[i].oob_layout;
 
 			rtn_status = SPI_NAND_FLASH_RTN_NO_ERROR;
 			break;
@@ -251,10 +243,11 @@ SPI_NAND_FLASH_RTN_T scan_spi_nand_table(struct SPI_NAND_FLASH_INFO_T *ptr_rtn_d
 /*======================================================================================
  * OOB free layouts
  *
- * These describe the user-visible free area of the spare region.  Each chip
- * names one of them explicitly in mtk-snand-ids.c (SNAND_INFO's sixth
- * argument); snand_oob_layout_by_id() maps that index to a definition here.
- * There is no vendor/geometry guess at runtime any more.
+ * The ATF table no longer carries per-chip OOB free layouts.  BL2 does not
+ * consume them (its UBI scanner uses fixed page-size offsets and its bad-block
+ * read starts at the first spare byte), and mainline U-Boot/Linux use their
+ * own mtd_ooblayout_ops.  Only the generic controller layout remains, as a
+ * fallback for the ecnt Linux MTD OOB mapping.
  *======================================================================================*/
 
 
@@ -393,15 +386,12 @@ static void ecnt_info_from_mtk(const struct snand_flash_info *f,
 		d->feature |= SPI_NAND_FLASH_WINBOND_BLANK_PARITY;
 
 	/*
-	 * Prefer the layout carried by the chip table; only fall back to the
-	 * vendor/geometry heuristic when the table entry has no layout.
+	 * The ATF table no longer carries per-chip OOB free layouts: BL2 does
+	 * not consume them, and mainline U-Boot/Linux use their own.  Keep the
+	 * generic controller layout for the ecnt Linux MTD OOB mapping.
 	 */
-	d->oob_layout = f->oob_layout;
-	d->oob_free_layout = NULL;
-	if (f->oob_layout)
-		d->oob_free_layout = snand_oob_layout_by_id(f->oob_layout);
-	if (!d->oob_free_layout)
-		d->oob_free_layout = &ooblayout_spi_controller_ecc;
+	d->oob_layout = 0;
+	d->oob_free_layout = &ooblayout_spi_controller_ecc;
 
 	/*
 	 * Defaults for the fields the upstream table does not carry.
@@ -458,6 +448,10 @@ static void ecnt_info_from_mtk(const struct snand_flash_info *f,
 	}
 
 	d->otp_page_num = -1;
+	/*
+	 * soc_ecc_ability is consumed by the parallel-NAND / SoC-ECC paths,
+	 * not by the SPI-NAND BL2 reader; the SPI-NAND BL2 blob omits it.
+	 */
 	d->soc_ecc_ability = q->soc_ecc ? q->soc_ecc : 12;
 
 	/* Read ECC threshold check (runtime only; 0 = disabled). */
@@ -471,6 +465,7 @@ static void ecnt_info_from_mtk(const struct snand_flash_info *f,
 		};
 		u8 re = q->read_ecc <= 4 ? q->read_ecc : 0;
 
+		/* read_ecc_ceck is used by the non-BL2 BMT/threshold path only. */
 		d->read_ecc_ceck = ecnt_read_ecc[re];
 	}
 
@@ -565,9 +560,6 @@ int main(void){
 	int buf_size = 1000000; //16M
 	struct bl2_flash_H flash_h;
 	char *buf = NULL;
-	unsigned char oob_map[256] = { 0 };
-	unsigned int oob_count = 1;
-	struct spi_nand_flash_ooblayout *oob_pool = NULL;
 
 	num = (int)snand_flash_id_count();
 	if (num > SPI_NAND_TABLE_MAX) {
@@ -577,37 +569,6 @@ int main(void){
 
 	for (i = 0; i < num; i++)
 		ecnt_info_from_mtk(snand_flash_id_index(i), &spi_nand_flash_tables[i]);
-
-	/*
-	 * Build the deduplicated OOB layout pool.  Pool index 0 is the
-	 * controller-ECC layout, the fallback for entries with oob_layout 0.
-	 */
-	oob_pool = malloc(256 * sizeof(*oob_pool));
-	if (!oob_pool) {
-		printf("oob pool malloc failed\n");
-		return -1;
-	}
-	{
-		struct spi_nand_flash_ooblayout *ctl = snand_oob_layout_by_id(255);
-
-		if (ctl)
-			memcpy(&oob_pool[0], ctl, sizeof(*oob_pool));
-		else
-			memset(&oob_pool[0], 0, sizeof(*oob_pool));
-	}
-	for (i = 0; i < num; i++) {
-		u8 id = spi_nand_flash_tables[i].oob_layout;
-
-		if (id == 0 || oob_map[id])
-			continue;
-		if (spi_nand_flash_tables[i].oob_free_layout && oob_count < 255) {
-			oob_map[id] = (unsigned char)oob_count;
-			memcpy(&oob_pool[oob_count],
-			       spi_nand_flash_tables[i].oob_free_layout,
-			       sizeof(*oob_pool));
-			oob_count++;
-		}
-	}
 
 	fp = fopen("flash_table.bin","w+");
 	if(fp == NULL){
@@ -681,8 +642,6 @@ int main(void){
 		total_size +=sizeof(spi_nand_flash_tables[i].otp_page_num);
 
 #endif
-		memcpy((buf+total_size), &spi_nand_flash_tables[i].soc_ecc_ability, sizeof(spi_nand_flash_tables[i].soc_ecc_ability));
-		total_size +=sizeof(spi_nand_flash_tables[i].soc_ecc_ability);
 
 		memcpy((buf+total_size), &spi_nand_flash_tables[i].extend_dev_id, sizeof(spi_nand_flash_tables[i].extend_dev_id));
 		total_size +=sizeof(spi_nand_flash_tables[i].extend_dev_id);
@@ -690,8 +649,6 @@ int main(void){
 		memcpy((buf+total_size), &spi_nand_flash_tables[i].read_method, sizeof(spi_nand_flash_tables[i].read_method));
 		total_size +=sizeof(spi_nand_flash_tables[i].read_method);
 
-		memcpy((buf+total_size), &spi_nand_flash_tables[i].oob_layout, sizeof(spi_nand_flash_tables[i].oob_layout));
-		total_size +=sizeof(spi_nand_flash_tables[i].oob_layout);
 	}
 
 	flash_h.flash_name_off = total_size;
@@ -710,14 +667,6 @@ int main(void){
 		memcpy((buf+total_size), &total_size, 4-(total_size %4));
 		total_size += (4-(total_size %4));
 	}
-	flash_h.flash_oob_map_off = total_size;
-	memcpy((buf+total_size), oob_map, sizeof(oob_map));
-	total_size += sizeof(oob_map);
-
-	flash_h.flash_oob_off = total_size;
-	flash_h.flash_oob_count = oob_count;
-	memcpy((buf+total_size), oob_pool, oob_count * sizeof(*oob_pool));
-	total_size += oob_count * sizeof(*oob_pool);
 
 	memcpy(buf, &flash_h, sizeof(struct bl2_flash_H));
 

@@ -365,12 +365,10 @@ struct bl2_flash_H
 {
 	unsigned int flash_entry;
 	unsigned int flash_name_off;
-	unsigned int flash_oob_off;	/* offset of the deduplicated layout pool */
+	unsigned int flash_oob_off;	/* unused by BL2; kept for the legacy layout */
 	unsigned int parallel_entry;
 	unsigned int parallel_name_off;
 	unsigned int parallel_oob_off;
-	unsigned int flash_oob_count;	/* number of entries in the layout pool */
-	unsigned int flash_oob_map_off;	/* offset of the 256-byte id -> pool index map */
 };
 #endif
 

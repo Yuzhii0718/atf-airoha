@@ -103,71 +103,6 @@ struct snand_mem_org {
 	{ .pagesize = (_ps), .sparesize = (_ss), .pages_per_block = (_ppb), \
 	  .blocks_per_die = (_bpd), .planes_per_die = (_ppd), .ndies = (_nd) }
 
-/*
- * OOB free-layout index.  The actual layouts are defined in
- * spi_nand_flash_table.c as ooblayout_typeN; the chip table only stores
- * the index so it stays independent of the driver translation unit.
- *
- * Types 1..22 come from the pre-migration ecnt table and are kept for
- * boards that already have BMT/UBI metadata written with those layouts;
- * changing them would move the metadata.  Types 23..50 are derived from
- * U-Boot's per-vendor ooblayout ops and are used by chips that only exist
- * in the U-Boot table.  Do not renumber or merge the two sets.
- */
-enum snand_oob_layout {
-	SNAND_OOB_NONE = 0,
-	SNAND_OOB_TYPE1 = 1,
-	SNAND_OOB_TYPE2 = 2,
-	SNAND_OOB_TYPE3 = 3,
-	SNAND_OOB_TYPE4 = 4,
-	SNAND_OOB_TYPE5 = 5,
-	SNAND_OOB_TYPE6 = 6,
-	SNAND_OOB_TYPE7 = 7,
-	SNAND_OOB_TYPE8 = 8,
-	SNAND_OOB_TYPE9 = 9,
-	SNAND_OOB_TYPE10 = 10,
-	SNAND_OOB_TYPE11 = 11,
-	SNAND_OOB_TYPE12 = 12,
-	SNAND_OOB_TYPE13 = 13,
-	SNAND_OOB_TYPE14 = 14,
-	SNAND_OOB_TYPE15 = 15,
-	SNAND_OOB_TYPE16 = 16,
-	SNAND_OOB_TYPE17 = 17,
-	SNAND_OOB_TYPE18 = 18,
-	SNAND_OOB_TYPE19 = 19,
-	SNAND_OOB_TYPE20 = 20,
-	SNAND_OOB_TYPE21 = 21,
-	SNAND_OOB_TYPE22 = 22,
-	SNAND_OOB_TYPE23 = 23,
-	SNAND_OOB_TYPE24 = 24,
-	SNAND_OOB_TYPE25 = 25,
-	SNAND_OOB_TYPE26 = 26,
-	SNAND_OOB_TYPE27 = 27,
-	SNAND_OOB_TYPE28 = 28,
-	SNAND_OOB_TYPE29 = 29,
-	SNAND_OOB_TYPE30 = 30,
-	SNAND_OOB_TYPE31 = 31,
-	SNAND_OOB_TYPE32 = 32,
-	SNAND_OOB_TYPE33 = 33,
-	SNAND_OOB_TYPE34 = 34,
-	SNAND_OOB_TYPE35 = 35,
-	SNAND_OOB_TYPE36 = 36,
-	SNAND_OOB_TYPE37 = 37,
-	SNAND_OOB_TYPE38 = 38,
-	SNAND_OOB_TYPE39 = 39,
-	SNAND_OOB_TYPE40 = 40,
-	SNAND_OOB_TYPE41 = 41,
-	SNAND_OOB_TYPE42 = 42,
-	SNAND_OOB_TYPE43 = 43,
-	SNAND_OOB_TYPE44 = 44,
-	SNAND_OOB_TYPE45 = 45,
-	SNAND_OOB_TYPE46 = 46,
-	SNAND_OOB_TYPE47 = 47,
-	SNAND_OOB_TYPE48 = 48,
-	SNAND_OOB_TYPE49 = 49,
-	SNAND_OOB_TYPE50 = 50,
-	SNAND_OOB_CONTROLLER = 255,
-};
 
 #define SNAND_FLAG_NONE		0
 
@@ -241,18 +176,17 @@ struct snand_flash_info {
 	const struct snand_mem_org memorg;
 	const struct snand_io_cap *cap_rd;
 	const struct snand_io_cap *cap_pl;
-	uint8_t oob_layout;	/* user OOB free-layout index */
 	uint8_t ecc_status;	/* enum snand_ecc_status */
 	uint8_t die_select;	/* enum snand_die_select */
 	uint8_t quirks;		/* index into snand_quirks[] */
 	uint16_t flags;		/* SNAND_FLAG_* */
 };
 
-#define SNAND_INFO(_model, _id, _memorg, _cap_rd, _cap_pl, _oob, _ecc, _die, _quirk, _flags) \
+#define SNAND_INFO(_model, _id, _memorg, _cap_rd, _cap_pl, _ecc, _die, _quirk, _flags) \
 	{ .model = (_model), .id = _id, .memorg = _memorg, \
 	  .cap_rd = (_cap_rd), .cap_pl = (_cap_pl), \
-	  .oob_layout = (_oob), .ecc_status = (_ecc), \
-	  .die_select = (_die), .quirks = (_quirk), .flags = (_flags) }
+	  .ecc_status = (_ecc), .die_select = (_die), \
+	  .quirks = (_quirk), .flags = (_flags) }
 
 /* Opcodes referenced by the capability tables ----------------------------- */
 #define SNAND_CMD_RESET			0xff
